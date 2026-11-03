@@ -483,7 +483,7 @@ def test_system_prompt_has_footer_and_guardrails():
 - Modify: `api/tests/conftest.py` (add `fake_anthropic` fixture that patches `anthropic.Anthropic` with a stub whose `messages.stream()` yields configured text chunks or raises)
 
 **Interfaces:**
-- Produces: `stream_reading(model: str, messages: list[dict]) -> Iterator[str]` yielding text deltas; after exhaustion, `stream_reading.usage` is not used — instead the function is a generator that returns `Usage(input_tokens, output_tokens)` via `StopIteration.value`. Raises `GenerationError(str)` on any SDK error or timeout (`timeout=120`, `max_tokens=2000` for paid, `600` for daily — pass `max_tokens` as a parameter).
+- Produces: `stream_reading(model: str, messages: list[dict], max_tokens: int) -> Generator[str, None, Usage]` — a generator yielding text deltas and returning `Usage(input_tokens, output_tokens)` via `StopIteration.value`. Uses `SYSTEM_PROMPT` from Task 10 and `timeout=120`. Raises `GenerationError(str)` on any SDK error or timeout.
 
 - [ ] **Step 1: Write the failing tests**
 
