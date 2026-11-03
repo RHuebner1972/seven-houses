@@ -8,6 +8,9 @@ alembic
 pyjwt
 google-auth
 anthropic
-skyfield
+skyfield==1.55
+jplephem==2.24
+numpy==2.5.4
+tzdata==2026.6
 httpx
 resend

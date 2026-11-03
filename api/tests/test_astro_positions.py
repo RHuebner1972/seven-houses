@@ -58,7 +58,10 @@ def test_angdiff_wraps():
 
 
 def test_to_utc_dst_gap_does_not_raise():
-    assert to_utc(datetime(2024, 3, 10, 2, 30), "America/New_York").tzinfo is not None
+    # 02:30 does not exist on 2024-03-10 in New York (clocks jump 02:00 EST -> 03:00 EDT).
+    # With fold=0 zoneinfo applies the pre-transition offset (EST, UTC-5), so the
+    # wall time maps forward to 07:30 UTC (== 03:30 EDT) instead of raising.
+    assert to_utc(datetime(2024, 3, 10, 2, 30), "America/New_York") == datetime(2024, 3, 10, 7, 30, tzinfo=UTC)
 
 
 def test_to_utc_dst_fold_uses_first_occurrence():
