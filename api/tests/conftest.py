@@ -78,3 +78,43 @@ def client(db):
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def fake_google(monkeypatch):
+    from app.auth import google
+
+    def fake_verify(id_token, request, client_id):
+        return {"sub": "g1", "email": "a@x.io", "email_verified": True}
+
+    monkeypatch.setattr(google, "_verify_oauth2_token", fake_verify)
+    return fake_verify
+
+
+@pytest.fixture
+def other_user_google_g1(db) -> User:
+    u = User(email="a@x.io", auth_provider="google", auth_subject="g1")
+    db.add(u)
+    db.commit()
+    return u
+
+
+class FakeResend:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def extract_token(self) -> str:
+        from urllib.parse import parse_qs, urlparse
+
+        return parse_qs(urlparse(self.sent[-1]["link"]).query)["token"][0]
+
+
+@pytest.fixture
+def fake_resend(monkeypatch):
+    from app.auth import magic
+
+    fake = FakeResend()
+    monkeypatch.setattr(
+        magic, "send_magic_link_email", lambda to, link: fake.sent.append({"to": to, "link": link})
+    )
+    return fake

@@ -136,3 +136,14 @@ class IpEvent(Base):
     ip: Mapped[str] = mapped_column(String, index=True)
     kind: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = _created_at()
+
+
+class MagicToken(Base):
+    __tablename__ = "magic_tokens"
+
+    token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
