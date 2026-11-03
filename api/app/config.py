@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-DEV_JWT_SECRET = "dev-secret-change-me"
+DEV_JWT_SECRET = "dev-secret-change-me-not-for-production-use"
 
 
 class Settings(BaseSettings):

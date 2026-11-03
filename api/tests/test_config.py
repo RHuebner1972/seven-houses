@@ -2,12 +2,12 @@ import json
 
 import pytest
 
-from app.config import Settings
+from app.config import DEV_JWT_SECRET, Settings
 
 
 def test_prod_rejects_dev_jwt_secret():
     with pytest.raises(ValueError):
-        Settings(env="prod", jwt_secret="dev-secret-change-me")
+        Settings(env="prod", jwt_secret=DEV_JWT_SECRET)
 
 
 def test_prod_rejects_empty_jwt_secret():

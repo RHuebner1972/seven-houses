@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.auth.jwt import mint_token
 from app.db import get_db
 from app.errors import NotFound
 from app.main import create_app
@@ -14,6 +15,10 @@ from app.models import User
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://sh:sh@localhost:5432/seventh_house_test"
 KEEP_TABLES = {"spread_prices", "alembic_version"}
+
+
+def auth_headers(user: User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {mint_token(user.id, user.email is None)}"}
 
 
 @pytest.fixture(scope="session")
