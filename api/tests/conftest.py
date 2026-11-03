@@ -118,3 +118,49 @@ def fake_resend(monkeypatch):
         magic, "send_magic_link_email", lambda to, link: fake.sent.append({"to": to, "link": link})
     )
     return fake
+
+
+@pytest.fixture
+def other_user(db) -> User:
+    u = User()
+    db.add(u)
+    db.commit()
+    return u
+
+
+OPENCAGE_BODY = {
+    "results": [
+        {
+            "formatted": "Hull, MA, USA",
+            "geometry": {"lat": 42.30, "lng": -70.91},
+            "annotations": {"timezone": {"name": "America/New_York"}},
+        },
+        {"formatted": "No tz place", "geometry": {"lat": 1.0, "lng": 2.0}, "annotations": {}},
+    ]
+}
+
+
+class FakeOpencage:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self.error: Exception | None = None
+
+
+@pytest.fixture
+def fake_opencage(monkeypatch):
+    import httpx
+
+    from app.charts import geocode
+
+    geocode._geocode_cached.cache_clear()
+    fake = FakeOpencage()
+
+    def fake_get(self, url, params=None, **kw):
+        fake.calls.append({"url": url, "params": params})
+        if fake.error:
+            raise fake.error
+        return httpx.Response(200, json=OPENCAGE_BODY, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    yield fake
+    geocode._geocode_cached.cache_clear()
