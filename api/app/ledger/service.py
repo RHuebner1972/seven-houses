@@ -8,6 +8,9 @@ from app.errors import InsufficientCredits
 from app.models import CreditLedger, User
 
 
+_REFERENCE_UNIQUE = "credit_ledger_reference_id_key"
+
+
 def balance(db: Session, user_id: UUID) -> int:
     total = db.scalar(
         select(func.coalesce(func.sum(CreditLedger.delta), 0)).where(
@@ -23,6 +26,9 @@ def credit(db: Session, user_id: UUID, amount: int, reason: str, reference_id: s
     Uses a SAVEPOINT so a duplicate does not abort the caller's transaction.
     Does not commit.
     """
+    if amount <= 0:
+        raise ValueError("credit amount must be positive")
+    db.flush()  # surface unrelated pending-state errors on their own
     try:
         with db.begin_nested():
             db.add(
@@ -30,8 +36,10 @@ def credit(db: Session, user_id: UUID, amount: int, reason: str, reference_id: s
                     user_id=user_id, delta=amount, reason=reason, reference_id=reference_id
                 )
             )
-    except IntegrityError:
-        return False
+    except IntegrityError as e:
+        if getattr(getattr(e.orig, "diag", None), "constraint_name", None) == _REFERENCE_UNIQUE:
+            return False
+        raise
     return True
 
 
@@ -41,6 +49,8 @@ def debit_for_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -
     The user row is locked FOR UPDATE before the balance is read, so concurrent
     debits for one user serialize and cannot overdraw.
     """
+    if cost <= 0:
+        raise ValueError("debit cost must be positive")
     locked = db.scalar(select(User.id).where(User.id == user_id).with_for_update())
     if locked is None or balance(db, user_id) < cost:
         raise InsufficientCredits("Not enough credits")
@@ -53,6 +63,8 @@ def debit_for_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -
 
 
 def refund_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -> bool:
+    if cost < 0:
+        raise ValueError("refund cost must not be negative")
     if cost == 0:
         return False
     return credit(db, user_id, cost, "refund", f"{reading_id}:refund")

@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import InsufficientCredits
@@ -35,6 +36,28 @@ def test_credit_duplicate_keeps_outer_transaction_alive(db, user):
     assert balance(db, user.id) == 7
 
 
+def test_credit_unknown_user_raises_not_false(db):
+    with pytest.raises(IntegrityError):
+        credit(db, uuid4(), 5, "purchase", "txX")
+
+
+@pytest.mark.parametrize("amount", [0, -1])
+def test_credit_rejects_non_positive_amount(db, user, amount):
+    with pytest.raises(ValueError):
+        credit(db, user.id, amount, "purchase", "txV")
+
+
+@pytest.mark.parametrize("cost", [0, -1])
+def test_debit_rejects_non_positive_cost(db, user, cost):
+    with pytest.raises(ValueError):
+        debit_for_reading(db, user.id, cost, uuid4())
+
+
+def test_refund_rejects_negative_cost(db, user):
+    with pytest.raises(ValueError):
+        refund_reading(db, user.id, -1, uuid4())
+
+
 def test_debit_insufficient_raises(db, user):
     with pytest.raises(InsufficientCredits):
         debit_for_reading(db, user.id, 1, uuid4())
@@ -51,6 +74,8 @@ def test_debit_records_row_without_committing(db, user):
     rid = uuid4()
     debit_for_reading(db, user.id, 2, rid)
     assert balance(db, user.id) == 1
+    row = db.scalars(select(CreditLedger).where(CreditLedger.reason == "reading")).one()
+    assert (row.delta, row.reason, row.reference_id) == (-2, "reading", str(rid))
     db.rollback()
     assert balance(db, user.id) == 3
 
