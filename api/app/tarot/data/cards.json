@@ -1,0 +1,1562 @@
+[
+ {
+  "id": "major-00-fool",
+  "name": "The Fool",
+  "arcana": "major",
+  "suit": null,
+  "number": 0,
+  "upright": [
+   "fresh start",
+   "leap of faith",
+   "open curiosity",
+   "playful risk"
+  ],
+  "reversed": [
+   "recklessness",
+   "hesitation at the edge",
+   "naive overreach",
+   "aimless drifting"
+  ],
+  "image": "/deck/major-00-fool.webp"
+ },
+ {
+  "id": "major-01-magician",
+  "name": "The Magician",
+  "arcana": "major",
+  "suit": null,
+  "number": 1,
+  "upright": [
+   "focused will",
+   "resourcefulness",
+   "skill put to use",
+   "deliberate action"
+  ],
+  "reversed": [
+   "scattered talent",
+   "manipulation",
+   "untapped potential",
+   "smoke and mirrors"
+  ],
+  "image": "/deck/major-01-magician.webp"
+ },
+ {
+  "id": "major-02-high-priestess",
+  "name": "The High Priestess",
+  "arcana": "major",
+  "suit": null,
+  "number": 2,
+  "upright": [
+   "inner knowing",
+   "quiet intuition",
+   "hidden depths",
+   "patient listening"
+  ],
+  "reversed": [
+   "ignored instincts",
+   "secrets kept too long",
+   "surface noise",
+   "disconnection from self"
+  ],
+  "image": "/deck/major-02-high-priestess.webp"
+ },
+ {
+  "id": "major-03-empress",
+  "name": "The Empress",
+  "arcana": "major",
+  "suit": null,
+  "number": 3,
+  "upright": [
+   "nurturing abundance",
+   "creative bloom",
+   "sensual comfort",
+   "growth"
+  ],
+  "reversed": [
+   "smothering care",
+   "creative drought",
+   "neglecting yourself",
+   "overindulgence"
+  ],
+  "image": "/deck/major-03-empress.webp"
+ },
+ {
+  "id": "major-04-emperor",
+  "name": "The Emperor",
+  "arcana": "major",
+  "suit": null,
+  "number": 4,
+  "upright": [
+   "firm structure",
+   "steady authority",
+   "protection",
+   "disciplined order"
+  ],
+  "reversed": [
+   "rigid control",
+   "domineering habits",
+   "structure without warmth",
+   "abdicated responsibility"
+  ],
+  "image": "/deck/major-04-emperor.webp"
+ },
+ {
+  "id": "major-05-hierophant",
+  "name": "The Hierophant",
+  "arcana": "major",
+  "suit": null,
+  "number": 5,
+  "upright": [
+   "shared tradition",
+   "mentorship",
+   "established practice",
+   "belonging"
+  ],
+  "reversed": [
+   "dogma",
+   "empty ritual",
+   "rebelling for its own sake",
+   "borrowed beliefs"
+  ],
+  "image": "/deck/major-05-hierophant.webp"
+ },
+ {
+  "id": "major-06-lovers",
+  "name": "The Lovers",
+  "arcana": "major",
+  "suit": null,
+  "number": 6,
+  "upright": [
+   "heartfelt union",
+   "aligned values",
+   "meaningful choice",
+   "honest bond"
+  ],
+  "reversed": [
+   "misaligned values",
+   "avoided decision",
+   "temptation",
+   "imbalance between partners"
+  ],
+  "image": "/deck/major-06-lovers.webp"
+ },
+ {
+  "id": "major-07-chariot",
+  "name": "The Chariot",
+  "arcana": "major",
+  "suit": null,
+  "number": 7,
+  "upright": [
+   "driven momentum",
+   "self-mastery",
+   "hard-won victory",
+   "determined direction"
+  ],
+  "reversed": [
+   "loss of direction",
+   "forced progress",
+   "aggression",
+   "pulled two ways"
+  ],
+  "image": "/deck/major-07-chariot.webp"
+ },
+ {
+  "id": "major-08-strength",
+  "name": "Strength",
+  "arcana": "major",
+  "suit": null,
+  "number": 8,
+  "upright": [
+   "gentle courage",
+   "patience with oneself",
+   "quiet resilience",
+   "compassion over force"
+  ],
+  "reversed": [
+   "self-doubt",
+   "raw impulse",
+   "depleted nerve",
+   "bottled frustration"
+  ],
+  "image": "/deck/major-08-strength.webp"
+ },
+ {
+  "id": "major-09-hermit",
+  "name": "The Hermit",
+  "arcana": "major",
+  "suit": null,
+  "number": 9,
+  "upright": [
+   "solitary reflection",
+   "inner guidance",
+   "withdrawal to learn",
+   "distilled wisdom"
+  ],
+  "reversed": [
+   "isolation",
+   "refusing counsel",
+   "lingering in retreat",
+   "loneliness"
+  ],
+  "image": "/deck/major-09-hermit.webp"
+ },
+ {
+  "id": "major-10-wheel-of-fortune",
+  "name": "Wheel of Fortune",
+  "arcana": "major",
+  "suit": null,
+  "number": 10,
+  "upright": [
+   "turning cycles",
+   "timely change",
+   "fortune shifting",
+   "larger patterns"
+  ],
+  "reversed": [
+   "resisting change",
+   "setbacks repeating",
+   "bad timing",
+   "clinging to a stuck cycle"
+  ],
+  "image": "/deck/major-10-wheel-of-fortune.webp"
+ },
+ {
+  "id": "major-11-justice",
+  "name": "Justice",
+  "arcana": "major",
+  "suit": null,
+  "number": 11,
+  "upright": [
+   "fair reckoning",
+   "clear-eyed truth",
+   "accountability",
+   "balanced decision"
+  ],
+  "reversed": [
+   "bias",
+   "dodged consequences",
+   "unfair outcome",
+   "tangled cause and effect"
+  ],
+  "image": "/deck/major-11-justice.webp"
+ },
+ {
+  "id": "major-12-hanged-man",
+  "name": "The Hanged Man",
+  "arcana": "major",
+  "suit": null,
+  "number": 12,
+  "upright": [
+   "willing pause",
+   "shifted perspective",
+   "surrender",
+   "suspended judgment"
+  ],
+  "reversed": [
+   "stalling",
+   "pointless sacrifice",
+   "resistance to letting go",
+   "waiting without learning"
+  ],
+  "image": "/deck/major-12-hanged-man.webp"
+ },
+ {
+  "id": "major-13-death",
+  "name": "Death",
+  "arcana": "major",
+  "suit": null,
+  "number": 13,
+  "upright": [
+   "necessary ending",
+   "clearing away",
+   "deep transformation",
+   "closing a chapter"
+  ],
+  "reversed": [
+   "clinging to the past",
+   "slow decay",
+   "fear of endings",
+   "stagnation"
+  ],
+  "image": "/deck/major-13-death.webp"
+ },
+ {
+  "id": "major-14-temperance",
+  "name": "Temperance",
+  "arcana": "major",
+  "suit": null,
+  "number": 14,
+  "upright": [
+   "measured blending",
+   "patience",
+   "moderation",
+   "steady healing"
+  ],
+  "reversed": [
+   "excess",
+   "uneven pacing",
+   "conflicting parts",
+   "rushed remedy"
+  ],
+  "image": "/deck/major-14-temperance.webp"
+ },
+ {
+  "id": "major-15-devil",
+  "name": "The Devil",
+  "arcana": "major",
+  "suit": null,
+  "number": 15,
+  "upright": [
+   "binding habits",
+   "shadow desires",
+   "material fixation",
+   "chosen chains"
+  ],
+  "reversed": [
+   "breaking free",
+   "reclaiming power",
+   "exposed pattern",
+   "loosening grip"
+  ],
+  "image": "/deck/major-15-devil.webp"
+ },
+ {
+  "id": "major-16-tower",
+  "name": "The Tower",
+  "arcana": "major",
+  "suit": null,
+  "number": 16,
+  "upright": [
+   "sudden upheaval",
+   "false structures falling",
+   "shock of truth",
+   "forced clearing"
+  ],
+  "reversed": [
+   "averted collapse",
+   "dreaded change delayed",
+   "lingering rubble",
+   "fear of the fall"
+  ],
+  "image": "/deck/major-16-tower.webp"
+ },
+ {
+  "id": "major-17-star",
+  "name": "The Star",
+  "arcana": "major",
+  "suit": null,
+  "number": 17,
+  "upright": [
+   "renewed hope",
+   "gentle healing",
+   "calm faith",
+   "quiet inspiration"
+  ],
+  "reversed": [
+   "dimmed hope",
+   "doubt in the future",
+   "drained spirit",
+   "disconnection from purpose"
+  ],
+  "image": "/deck/major-17-star.webp"
+ },
+ {
+  "id": "major-18-moon",
+  "name": "The Moon",
+  "arcana": "major",
+  "suit": null,
+  "number": 18,
+  "upright": [
+   "dreamlike uncertainty",
+   "subconscious tides",
+   "illusion",
+   "intuitive fear"
+  ],
+  "reversed": [
+   "fog lifting",
+   "confusion clearing",
+   "anxieties surfacing",
+   "repressed feelings emerging"
+  ],
+  "image": "/deck/major-18-moon.webp"
+ },
+ {
+  "id": "major-19-sun",
+  "name": "The Sun",
+  "arcana": "major",
+  "suit": null,
+  "number": 19,
+  "upright": [
+   "bright vitality",
+   "plain joy",
+   "success in the open",
+   "warm confidence"
+  ],
+  "reversed": [
+   "clouded cheer",
+   "muted enthusiasm",
+   "overexposure",
+   "delayed celebration"
+  ],
+  "image": "/deck/major-19-sun.webp"
+ },
+ {
+  "id": "major-20-judgement",
+  "name": "Judgement",
+  "arcana": "major",
+  "suit": null,
+  "number": 20,
+  "upright": [
+   "honest reckoning",
+   "awakening call",
+   "release of the past",
+   "answering a vocation"
+  ],
+  "reversed": [
+   "self-criticism",
+   "ignored calling",
+   "stubborn regret",
+   "avoided review"
+  ],
+  "image": "/deck/major-20-judgement.webp"
+ },
+ {
+  "id": "major-21-world",
+  "name": "The World",
+  "arcana": "major",
+  "suit": null,
+  "number": 21,
+  "upright": [
+   "completion",
+   "integration",
+   "earned wholeness",
+   "cycle fulfilled"
+  ],
+  "reversed": [
+   "unfinished business",
+   "near-miss closure",
+   "loose ends",
+   "reluctance to move on"
+  ],
+  "image": "/deck/major-21-world.webp"
+ },
+ {
+  "id": "wands-01",
+  "name": "Ace of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 1,
+  "upright": [
+   "spark of inspiration",
+   "bold beginning",
+   "raw drive",
+   "new venture"
+  ],
+  "reversed": [
+   "false start",
+   "fizzling idea",
+   "creative block",
+   "misdirected energy"
+  ],
+  "image": "/deck/wands-01.webp"
+ },
+ {
+  "id": "wands-02",
+  "name": "Two of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 2,
+  "upright": [
+   "planning ahead",
+   "weighing horizons",
+   "personal vision",
+   "decision at the threshold"
+  ],
+  "reversed": [
+   "fear of the unknown",
+   "playing small",
+   "stalled plans",
+   "indecision"
+  ],
+  "image": "/deck/wands-02.webp"
+ },
+ {
+  "id": "wands-03",
+  "name": "Three of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 3,
+  "upright": [
+   "expansion",
+   "foresight",
+   "ventures at sea",
+   "waiting for returns"
+  ],
+  "reversed": [
+   "delays abroad",
+   "short-sighted planning",
+   "missed signals",
+   "lack of follow-through"
+  ],
+  "image": "/deck/wands-03.webp"
+ },
+ {
+  "id": "wands-04",
+  "name": "Four of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 4,
+  "upright": [
+   "joyful milestone",
+   "stable footing",
+   "homecoming",
+   "communal celebration"
+  ],
+  "reversed": [
+   "unsettled home",
+   "tension in the group",
+   "conditional welcome",
+   "hollow party"
+  ],
+  "image": "/deck/wands-04.webp"
+ },
+ {
+  "id": "wands-05",
+  "name": "Five of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 5,
+  "upright": [
+   "friendly rivalry",
+   "clashing ideas",
+   "scrappy competition",
+   "jostling for place"
+  ],
+  "reversed": [
+   "avoided conflict",
+   "petty quarrels",
+   "chaos without purpose",
+   "tense truce"
+  ],
+  "image": "/deck/wands-05.webp"
+ },
+ {
+  "id": "wands-06",
+  "name": "Six of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 6,
+  "upright": [
+   "public recognition",
+   "deserved victory",
+   "confident return",
+   "rising reputation"
+  ],
+  "reversed": [
+   "hollow praise",
+   "fall from favor",
+   "ego inflation",
+   "unrecognized effort"
+  ],
+  "image": "/deck/wands-06.webp"
+ },
+ {
+  "id": "wands-07",
+  "name": "Seven of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 7,
+  "upright": [
+   "holding your ground",
+   "defending a position",
+   "standing firm",
+   "outnumbered resolve"
+  ],
+  "reversed": [
+   "overwhelmed defenses",
+   "giving ground",
+   "burnout from vigilance",
+   "yielding too fast"
+  ],
+  "image": "/deck/wands-07.webp"
+ },
+ {
+  "id": "wands-08",
+  "name": "Eight of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 8,
+  "upright": [
+   "swift movement",
+   "messages flying",
+   "momentum",
+   "rapid progress"
+  ],
+  "reversed": [
+   "scattered pace",
+   "crossed wires",
+   "stalled arrivals",
+   "rushing blindly"
+  ],
+  "image": "/deck/wands-08.webp"
+ },
+ {
+  "id": "wands-09",
+  "name": "Nine of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 9,
+  "upright": [
+   "battered persistence",
+   "last reserves",
+   "wary resilience",
+   "near the finish"
+  ],
+  "reversed": [
+   "exhaustion",
+   "paranoia",
+   "quitting early",
+   "stubborn defensiveness"
+  ],
+  "image": "/deck/wands-09.webp"
+ },
+ {
+  "id": "wands-10",
+  "name": "Ten of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 10,
+  "upright": [
+   "heavy load",
+   "overcommitment",
+   "duty carried to the end",
+   "nearing relief"
+  ],
+  "reversed": [
+   "dropping the burden",
+   "delegating",
+   "collapse under strain",
+   "needless martyrdom"
+  ],
+  "image": "/deck/wands-10.webp"
+ },
+ {
+  "id": "wands-11-page",
+  "name": "Page of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 11,
+  "upright": [
+   "eager explorer",
+   "enthusiastic news",
+   "curious spark",
+   "fledgling passion"
+  ],
+  "reversed": [
+   "restless dabbling",
+   "discouraging news",
+   "half-hearted start",
+   "immature impulse"
+  ],
+  "image": "/deck/wands-11-page.webp"
+ },
+ {
+  "id": "wands-12-knight",
+  "name": "Knight of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 12,
+  "upright": [
+   "dashing pursuit",
+   "adventurous charge",
+   "magnetic energy",
+   "bold motion"
+  ],
+  "reversed": [
+   "reckless haste",
+   "temper flares",
+   "scattered chase",
+   "abandoned quest"
+  ],
+  "image": "/deck/wands-12-knight.webp"
+ },
+ {
+  "id": "wands-13-queen",
+  "name": "Queen of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 13,
+  "upright": [
+   "warm charisma",
+   "self-assured flair",
+   "vivid presence",
+   "generous spirit"
+  ],
+  "reversed": [
+   "jealous streak",
+   "demanding spotlight",
+   "faded confidence",
+   "brooding temper"
+  ],
+  "image": "/deck/wands-13-queen.webp"
+ },
+ {
+  "id": "wands-14-king",
+  "name": "King of Wands",
+  "arcana": "minor",
+  "suit": "wands",
+  "number": 14,
+  "upright": [
+   "visionary leadership",
+   "inspiring command",
+   "bold direction",
+   "mature drive"
+  ],
+  "reversed": [
+   "tyrannical streak",
+   "impulsive decrees",
+   "grand plans unfinished",
+   "overbearing pride"
+  ],
+  "image": "/deck/wands-14-king.webp"
+ },
+ {
+  "id": "cups-01",
+  "name": "Ace of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 1,
+  "upright": [
+   "overflowing feeling",
+   "new affection",
+   "open heart",
+   "emotional renewal"
+  ],
+  "reversed": [
+   "blocked feeling",
+   "emotional spill",
+   "repressed warmth",
+   "empty offering"
+  ],
+  "image": "/deck/cups-01.webp"
+ },
+ {
+  "id": "cups-02",
+  "name": "Two of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 2,
+  "upright": [
+   "mutual attraction",
+   "balanced exchange",
+   "tender partnership",
+   "shared respect"
+  ],
+  "reversed": [
+   "lopsided affection",
+   "broken rapport",
+   "mismatched hopes",
+   "strained harmony"
+  ],
+  "image": "/deck/cups-02.webp"
+ },
+ {
+  "id": "cups-03",
+  "name": "Three of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 3,
+  "upright": [
+   "joyful gathering",
+   "friendship",
+   "shared celebration",
+   "community warmth"
+  ],
+  "reversed": [
+   "gossip",
+   "overindulged party",
+   "exclusion",
+   "fading circle"
+  ],
+  "image": "/deck/cups-03.webp"
+ },
+ {
+  "id": "cups-04",
+  "name": "Four of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 4,
+  "upright": [
+   "apathy",
+   "contemplation",
+   "overlooked offer",
+   "inward drift"
+  ],
+  "reversed": [
+   "renewed interest",
+   "awakening from boredom",
+   "accepting a gift",
+   "shaking off the fog"
+  ],
+  "image": "/deck/cups-04.webp"
+ },
+ {
+  "id": "cups-05",
+  "name": "Five of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 5,
+  "upright": [
+   "grief over loss",
+   "dwelling on spilled cups",
+   "regret",
+   "mourning"
+  ],
+  "reversed": [
+   "moving on",
+   "finding what remains",
+   "acceptance",
+   "lifting from sorrow"
+  ],
+  "image": "/deck/cups-05.webp"
+ },
+ {
+  "id": "cups-06",
+  "name": "Six of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 6,
+  "upright": [
+   "childhood nostalgia",
+   "kind gestures",
+   "familiar comfort",
+   "innocent generosity"
+  ],
+  "reversed": [
+   "stuck in the past",
+   "rose-tinted memory",
+   "outgrown comforts",
+   "naive trust"
+  ],
+  "image": "/deck/cups-06.webp"
+ },
+ {
+  "id": "cups-07",
+  "name": "Seven of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 7,
+  "upright": [
+   "tempting options",
+   "daydreams",
+   "wishful visions",
+   "a crowded imagination"
+  ],
+  "reversed": [
+   "clear choice",
+   "illusions dispelled",
+   "grounded decision",
+   "overwhelmed by options"
+  ],
+  "image": "/deck/cups-07.webp"
+ },
+ {
+  "id": "cups-08",
+  "name": "Eight of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 8,
+  "upright": [
+   "walking away",
+   "search for deeper meaning",
+   "leaving the comfortable",
+   "quiet departure"
+  ],
+  "reversed": [
+   "fear of leaving",
+   "drifting back",
+   "avoidance",
+   "lingering in a hollow place"
+  ],
+  "image": "/deck/cups-08.webp"
+ },
+ {
+  "id": "cups-09",
+  "name": "Nine of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 9,
+  "upright": [
+   "satisfied wish",
+   "contentment",
+   "savoring success",
+   "pleasant fulfilment"
+  ],
+  "reversed": [
+   "smugness",
+   "shallow indulgence",
+   "unmet craving",
+   "wish with a catch"
+  ],
+  "image": "/deck/cups-09.webp"
+ },
+ {
+  "id": "cups-10",
+  "name": "Ten of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 10,
+  "upright": [
+   "family harmony",
+   "lasting happiness",
+   "emotional fulfilment",
+   "shared home"
+  ],
+  "reversed": [
+   "household discord",
+   "fractured ideal",
+   "hidden strain",
+   "picture-perfect facade"
+  ],
+  "image": "/deck/cups-10.webp"
+ },
+ {
+  "id": "cups-11-page",
+  "name": "Page of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 11,
+  "upright": [
+   "tender message",
+   "imaginative curiosity",
+   "sensitive start",
+   "gentle surprise"
+  ],
+  "reversed": [
+   "moody disappointment",
+   "emotional immaturity",
+   "unsent feelings",
+   "daydreaming without action"
+  ],
+  "image": "/deck/cups-11-page.webp"
+ },
+ {
+  "id": "cups-12-knight",
+  "name": "Knight of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 12,
+  "upright": [
+   "romantic offer",
+   "idealistic quest",
+   "graceful approach",
+   "heartfelt pursuit"
+  ],
+  "reversed": [
+   "empty charm",
+   "mood swings",
+   "unrealistic promises",
+   "retreating into fantasy"
+  ],
+  "image": "/deck/cups-12-knight.webp"
+ },
+ {
+  "id": "cups-13-queen",
+  "name": "Queen of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 13,
+  "upright": [
+   "empathic depth",
+   "intuitive care",
+   "emotional steadiness",
+   "compassionate listening"
+  ],
+  "reversed": [
+   "emotional overwhelm",
+   "martyr tendencies",
+   "boundary loss",
+   "withheld feeling"
+  ],
+  "image": "/deck/cups-13-queen.webp"
+ },
+ {
+  "id": "cups-14-king",
+  "name": "King of Cups",
+  "arcana": "minor",
+  "suit": "cups",
+  "number": 14,
+  "upright": [
+   "emotional maturity",
+   "calm diplomacy",
+   "compassionate counsel",
+   "steady heart"
+  ],
+  "reversed": [
+   "suppressed turmoil",
+   "manipulative calm",
+   "cool distance",
+   "volatile undercurrent"
+  ],
+  "image": "/deck/cups-14-king.webp"
+ },
+ {
+  "id": "swords-01",
+  "name": "Ace of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 1,
+  "upright": [
+   "sharp clarity",
+   "decisive truth",
+   "mental breakthrough",
+   "cutting through doubt"
+  ],
+  "reversed": [
+   "clouded judgment",
+   "harsh words",
+   "confused thinking",
+   "blunted insight"
+  ],
+  "image": "/deck/swords-01.webp"
+ },
+ {
+  "id": "swords-02",
+  "name": "Two of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 2,
+  "upright": [
+   "stalemate",
+   "guarded choice",
+   "deliberate blindness",
+   "balanced tension"
+  ],
+  "reversed": [
+   "indecision breaking",
+   "forced decision",
+   "hidden facts surfacing",
+   "anxiety about choosing"
+  ],
+  "image": "/deck/swords-02.webp"
+ },
+ {
+  "id": "swords-03",
+  "name": "Three of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 3,
+  "upright": [
+   "heartbreak",
+   "painful truth",
+   "sorrow",
+   "wounding words"
+  ],
+  "reversed": [
+   "slow recovery",
+   "releasing pain",
+   "forgiveness",
+   "carrying old hurt"
+  ],
+  "image": "/deck/swords-03.webp"
+ },
+ {
+  "id": "swords-04",
+  "name": "Four of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 4,
+  "upright": [
+   "rest",
+   "recovery",
+   "quiet retreat",
+   "mental recharge"
+  ],
+  "reversed": [
+   "restlessness",
+   "burnout ignored",
+   "returning too soon",
+   "stirring from stillness"
+  ],
+  "image": "/deck/swords-04.webp"
+ },
+ {
+  "id": "swords-05",
+  "name": "Five of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 5,
+  "upright": [
+   "hollow victory",
+   "conflict at a cost",
+   "sore winners",
+   "bitter dispute"
+  ],
+  "reversed": [
+   "reconciliation",
+   "lingering resentment",
+   "walking away",
+   "wounded pride"
+  ],
+  "image": "/deck/swords-05.webp"
+ },
+ {
+  "id": "swords-06",
+  "name": "Six of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 6,
+  "upright": [
+   "passage to calmer water",
+   "gradual relief",
+   "leaving trouble behind",
+   "thoughtful transition"
+  ],
+  "reversed": [
+   "stuck in turbulence",
+   "unresolved baggage",
+   "resistance to moving",
+   "rough crossing"
+  ],
+  "image": "/deck/swords-06.webp"
+ },
+ {
+  "id": "swords-07",
+  "name": "Seven of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 7,
+  "upright": [
+   "stealth",
+   "clever workaround",
+   "going alone",
+   "strategic evasion"
+  ],
+  "reversed": [
+   "exposure",
+   "conscience catching up",
+   "bluff called",
+   "confessing the scheme"
+  ],
+  "image": "/deck/swords-07.webp"
+ },
+ {
+  "id": "swords-08",
+  "name": "Eight of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 8,
+  "upright": [
+   "self-imposed limits",
+   "feeling trapped",
+   "bound by fear",
+   "narrowed view"
+  ],
+  "reversed": [
+   "freeing yourself",
+   "seeing options",
+   "loosening restraints",
+   "stepping out of the maze"
+  ],
+  "image": "/deck/swords-08.webp"
+ },
+ {
+  "id": "swords-09",
+  "name": "Nine of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 9,
+  "upright": [
+   "sleepless worry",
+   "nighttime dread",
+   "anxious replay",
+   "burdened conscience"
+  ],
+  "reversed": [
+   "worry easing",
+   "facing fears",
+   "reaching out for help",
+   "dread outsized by reality"
+  ],
+  "image": "/deck/swords-09.webp"
+ },
+ {
+  "id": "swords-10",
+  "name": "Ten of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 10,
+  "upright": [
+   "painful ending",
+   "rock bottom",
+   "total defeat",
+   "a chapter finished"
+  ],
+  "reversed": [
+   "slow recovery",
+   "refusal to stay down",
+   "lingering ruin",
+   "dawn after collapse"
+  ],
+  "image": "/deck/swords-10.webp"
+ },
+ {
+  "id": "swords-11-page",
+  "name": "Page of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 11,
+  "upright": [
+   "alert curiosity",
+   "sharp questions",
+   "fresh ideas",
+   "watchful learner"
+  ],
+  "reversed": [
+   "gossip",
+   "scattered thoughts",
+   "cutting remarks",
+   "hasty speech"
+  ],
+  "image": "/deck/swords-11-page.webp"
+ },
+ {
+  "id": "swords-12-knight",
+  "name": "Knight of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 12,
+  "upright": [
+   "swift reasoning",
+   "forceful argument",
+   "ambitious charge",
+   "direct action"
+  ],
+  "reversed": [
+   "impatient bluntness",
+   "tactless attack",
+   "racing ahead unprepared",
+   "argumentative streak"
+  ],
+  "image": "/deck/swords-12-knight.webp"
+ },
+ {
+  "id": "swords-13-queen",
+  "name": "Queen of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 13,
+  "upright": [
+   "candid insight",
+   "independent judgment",
+   "clear perception",
+   "honest boundaries"
+  ],
+  "reversed": [
+   "cold detachment",
+   "bitter tongue",
+   "harsh critique",
+   "walled-off heart"
+  ],
+  "image": "/deck/swords-13-queen.webp"
+ },
+ {
+  "id": "swords-14-king",
+  "name": "King of Swords",
+  "arcana": "minor",
+  "suit": "swords",
+  "number": 14,
+  "upright": [
+   "rigorous logic",
+   "fair authority",
+   "intellectual command",
+   "principled judgment"
+  ],
+  "reversed": [
+   "abuse of reason",
+   "cruel precision",
+   "rigid doctrine",
+   "power wielded coldly"
+  ],
+  "image": "/deck/swords-14-king.webp"
+ },
+ {
+  "id": "pentacles-01",
+  "name": "Ace of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 1,
+  "upright": [
+   "material seed",
+   "tangible opportunity",
+   "grounded start",
+   "practical gift"
+  ],
+  "reversed": [
+   "missed chance",
+   "shaky foundation",
+   "scarce resources",
+   "wasteful beginning"
+  ],
+  "image": "/deck/pentacles-01.webp"
+ },
+ {
+  "id": "pentacles-02",
+  "name": "Two of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 2,
+  "upright": [
+   "juggling priorities",
+   "adaptable balance",
+   "flexible budgeting",
+   "steady rhythm"
+  ],
+  "reversed": [
+   "overextended schedule",
+   "dropped balls",
+   "financial wobble",
+   "disorganized juggle"
+  ],
+  "image": "/deck/pentacles-02.webp"
+ },
+ {
+  "id": "pentacles-03",
+  "name": "Three of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 3,
+  "upright": [
+   "skilled teamwork",
+   "craftsmanship",
+   "collaborative building",
+   "recognized competence"
+  ],
+  "reversed": [
+   "mismatched effort",
+   "shoddy work",
+   "lack of cooperation",
+   "ignored expertise"
+  ],
+  "image": "/deck/pentacles-03.webp"
+ },
+ {
+  "id": "pentacles-04",
+  "name": "Four of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 4,
+  "upright": [
+   "careful saving",
+   "firm hold",
+   "security-seeking",
+   "protective boundaries"
+  ],
+  "reversed": [
+   "grasping",
+   "hoarding fear",
+   "loosening control",
+   "spending in a panic"
+  ],
+  "image": "/deck/pentacles-04.webp"
+ },
+ {
+  "id": "pentacles-05",
+  "name": "Five of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 5,
+  "upright": [
+   "hardship",
+   "feeling shut out",
+   "lean times",
+   "overlooked help"
+  ],
+  "reversed": [
+   "recovery",
+   "help arriving",
+   "shared shelter",
+   "pride blocking aid"
+  ],
+  "image": "/deck/pentacles-05.webp"
+ },
+ {
+  "id": "pentacles-06",
+  "name": "Six of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 6,
+  "upright": [
+   "fair giving",
+   "shared resources",
+   "balanced generosity",
+   "kindness with means"
+  ],
+  "reversed": [
+   "strings attached",
+   "uneven exchange",
+   "debt",
+   "charity as control"
+  ],
+  "image": "/deck/pentacles-06.webp"
+ },
+ {
+  "id": "pentacles-07",
+  "name": "Seven of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 7,
+  "upright": [
+   "patient growth",
+   "assessing the harvest",
+   "long-view investment",
+   "pausing to evaluate"
+  ],
+  "reversed": [
+   "impatience",
+   "poor yield",
+   "wasted effort",
+   "doubting the slow work"
+  ],
+  "image": "/deck/pentacles-07.webp"
+ },
+ {
+  "id": "pentacles-08",
+  "name": "Eight of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 8,
+  "upright": [
+   "dedicated practice",
+   "diligent craft",
+   "steady improvement",
+   "apprenticeship"
+  ],
+  "reversed": [
+   "dull routine",
+   "perfectionism",
+   "cutting corners",
+   "repetitive grind"
+  ],
+  "image": "/deck/pentacles-08.webp"
+ },
+ {
+  "id": "pentacles-09",
+  "name": "Nine of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 9,
+  "upright": [
+   "self-made comfort",
+   "refined independence",
+   "earned leisure",
+   "graceful abundance"
+  ],
+  "reversed": [
+   "overspending on image",
+   "dependence",
+   "hollow luxury",
+   "worked too hard to enjoy it"
+  ],
+  "image": "/deck/pentacles-09.webp"
+ },
+ {
+  "id": "pentacles-10",
+  "name": "Ten of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 10,
+  "upright": [
+   "lasting legacy",
+   "family wealth",
+   "long-term security",
+   "inherited stability"
+  ],
+  "reversed": [
+   "fragile fortune",
+   "family money disputes",
+   "short-term thinking",
+   "unstable foundation"
+  ],
+  "image": "/deck/pentacles-10.webp"
+ },
+ {
+  "id": "pentacles-11-page",
+  "name": "Page of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 11,
+  "upright": [
+   "diligent student",
+   "practical curiosity",
+   "new study",
+   "grounded ambition"
+  ],
+  "reversed": [
+   "procrastination",
+   "impractical dreaming",
+   "lost focus",
+   "unfinished lesson"
+  ],
+  "image": "/deck/pentacles-11-page.webp"
+ },
+ {
+  "id": "pentacles-12-knight",
+  "name": "Knight of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 12,
+  "upright": [
+   "methodical progress",
+   "reliable effort",
+   "steady plodding",
+   "dependable duty"
+  ],
+  "reversed": [
+   "stubborn routine",
+   "boredom",
+   "slow to act",
+   "tedious perfection"
+  ],
+  "image": "/deck/pentacles-12-knight.webp"
+ },
+ {
+  "id": "pentacles-13-queen",
+  "name": "Queen of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 13,
+  "upright": [
+   "practical nurture",
+   "resourceful homemaking",
+   "earthy generosity",
+   "steady comfort"
+  ],
+  "reversed": [
+   "work-life imbalance",
+   "smothering practicality",
+   "material worry",
+   "self-neglect"
+  ],
+  "image": "/deck/pentacles-13-queen.webp"
+ },
+ {
+  "id": "pentacles-14-king",
+  "name": "King of Pentacles",
+  "arcana": "minor",
+  "suit": "pentacles",
+  "number": 14,
+  "upright": [
+   "enterprising stability",
+   "prosperous steward",
+   "reliable provider",
+   "patient mastery"
+  ],
+  "reversed": [
+   "greed",
+   "stubborn materialism",
+   "exploiting resources",
+   "status obsession"
+  ],
+  "image": "/deck/pentacles-14-king.webp"
+ }
+]
