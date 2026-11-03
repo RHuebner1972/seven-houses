@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import current_user
 from app.auth.google import verify_google_id_token
 from app.auth.jwt import mint_token
-from app.auth.linking import link_identity
+from app.auth.linking import link_and_commit
 from app.auth.magic import consume_magic_token, issue_magic_link
 from app.db import get_db
 from app.ledger.service import balance
@@ -65,8 +65,7 @@ def google_sign_in(
     db: Annotated[Session, Depends(get_db)],
 ):
     identity = verify_google_id_token(body.id_token)
-    linked = link_identity(db, user, "google", identity.subject, identity.email)
-    db.commit()
+    linked = link_and_commit(db, user, "google", identity.subject, identity.email)
     return _signed_in(linked)
 
 

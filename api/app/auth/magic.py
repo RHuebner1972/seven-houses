@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -7,10 +8,12 @@ import resend
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.linking import link_identity
+from app.auth.linking import link_and_commit
 from app.config import get_settings
 from app.errors import Unauthorized
 from app.models import MagicToken, User
+
+logger = logging.getLogger(__name__)
 
 MAGIC_TTL = timedelta(minutes=15)
 
@@ -35,13 +38,17 @@ def send_magic_link_email(to: str, link: str) -> None:
 def issue_magic_link(db: Session, email: str, user_id: UUID) -> str:
     raw = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
-    db.add(
-        MagicToken(
-            token_hash=_hash(raw), email=email, user_id=user_id, expires_at=now + MAGIC_TTL
-        )
+    row = MagicToken(
+        token_hash=_hash(raw), email=email, user_id=user_id, expires_at=now + MAGIC_TTL
     )
+    db.add(row)
     db.commit()
-    send_magic_link_email(email, f"{get_settings().app_base_url}/auth/magic?token={raw}")
+    try:
+        send_magic_link_email(email, f"{get_settings().app_base_url}/auth/magic?token={raw}")
+    except Exception:
+        logger.exception("Failed to send magic link email")
+        db.delete(row)
+        db.commit()
     return raw
 
 
@@ -57,7 +64,8 @@ def consume_magic_token(db: Session, token: str) -> User:
     if current is None:
         db.rollback()
         raise Unauthorized("Invalid or expired link")
-    row.used_at = now
-    user = link_identity(db, current, "email", None, row.email)
-    db.commit()
-    return user
+
+    def mark_used() -> None:
+        row.used_at = now
+
+    return link_and_commit(db, current, "email", None, row.email, before_commit=mark_used)

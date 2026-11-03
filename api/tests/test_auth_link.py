@@ -1,10 +1,11 @@
+import hashlib
 from datetime import timedelta
 
 import pytest
 from freezegun import freeze_time
 from sqlalchemy import select
 
-from app.auth import google
+from app.auth import google, linking, magic
 from app.auth.jwt import verify_token
 from app.errors import Unauthorized
 from app.models import MagicToken, User
@@ -72,7 +73,7 @@ def test_magic_request_sends_email(client, db, user, fake_resend):
     assert fake_resend.sent[0]["to"] == "a@x.io"
     assert "/auth/magic?token=" in fake_resend.sent[0]["link"]
     row = db.scalars(select(MagicToken)).one()
-    assert row.token_hash != fake_resend.extract_token()
+    assert row.token_hash == hashlib.sha256(fake_resend.extract_token().encode()).hexdigest()
     assert row.user_id == user.id
 
 
@@ -123,3 +124,68 @@ def test_magic_token_expiry(client, user, fake_resend, minutes, status):
         frozen.tick(timedelta(minutes=minutes))
         r = client.post("/auth/magic/verify", json={"token": token})
     assert r.status_code == status
+
+
+def test_google_changed_email_owned_by_other_returns_owner(client, db, fake_google):
+    linked = User(email="old@x.io", auth_provider="google", auth_subject="g1")
+    owner = User(email="a@x.io")
+    db.add_all([linked, owner])
+    db.commit()
+    r = client.post("/auth/google", json={"id_token": "x"}, headers=auth_headers(linked))
+    assert r.status_code == 200
+    assert r.json()["user_id"] == str(owner.id)
+    db.refresh(linked)
+    assert linked.email == "old@x.io"
+
+
+def test_google_changed_email_free_updates_in_place(client, db, fake_google):
+    linked = User(email="old@x.io", auth_provider="google", auth_subject="g1")
+    db.add(linked)
+    db.commit()
+    r = client.post("/auth/google", json={"id_token": "x"}, headers=auth_headers(linked))
+    assert r.json()["user_id"] == str(linked.id)
+    db.refresh(linked)
+    assert linked.email == "a@x.io"
+
+
+def test_commit_race_resolves_to_email_owner(db, engine, user, monkeypatch):
+    from sqlalchemy.orm import sessionmaker
+
+    real = linking._find_owner
+    calls = []
+
+    def racing(*args):
+        result = real(*args)
+        if not calls:  # competitor commits after our lookup, before our commit
+            with sessionmaker(engine)() as other:
+                other.add(User(email="a@x.io"))
+                other.commit()
+        calls.append(1)
+        return result
+
+    monkeypatch.setattr(linking, "_find_owner", racing)
+    result = linking.link_and_commit(db, user, "email", None, "a@x.io")
+    assert result.id != user.id
+    assert result.email == "a@x.io"
+
+
+def test_linked_user_not_overwritten_by_other_identity(client, db, fake_resend):
+    g = User(email="g@x.io", auth_provider="google", auth_subject="g9")
+    db.add(g)
+    db.commit()
+    client.post("/auth/magic/request", json={"email": "other@x.io"}, headers=auth_headers(g))
+    r = client.post("/auth/magic/verify", json={"token": fake_resend.extract_token()})
+    assert r.status_code == 422
+    db.refresh(g)
+    assert (g.email, g.auth_provider, g.auth_subject) == ("g@x.io", "google", "g9")
+
+
+def test_magic_send_failure_still_202_and_no_row(client, db, user, monkeypatch, caplog):
+    def boom(to, link):
+        raise RuntimeError("resend down")
+
+    monkeypatch.setattr(magic, "send_magic_link_email", boom)
+    r = client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    assert r.status_code == 202
+    assert db.scalars(select(MagicToken)).all() == []
+    assert "Failed to send magic link email" in caplog.text
