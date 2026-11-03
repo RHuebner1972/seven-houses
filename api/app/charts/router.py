@@ -69,6 +69,11 @@ def create_profile(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Create a birth profile and its chart.
+
+    Nonexistent local times in a DST gap are normalised forward; the stored
+    instant (birth_datetime_utc) is authoritative.
+    """
     if body.birth_date > datetime.now(UTC).date():
         raise ValidationFailed("birth_date: must not be in the future")
     if body.birth_date < MIN_BIRTH_DATE:

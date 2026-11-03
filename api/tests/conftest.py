@@ -144,6 +144,7 @@ class FakeOpencage:
     def __init__(self):
         self.calls: list[dict] = []
         self.error: Exception | None = None
+        self.body: dict | None = None
 
 
 @pytest.fixture
@@ -152,15 +153,15 @@ def fake_opencage(monkeypatch):
 
     from app.charts import geocode
 
-    geocode._geocode_cached.cache_clear()
+    geocode.clear_cache()
     fake = FakeOpencage()
 
     def fake_get(self, url, params=None, **kw):
         fake.calls.append({"url": url, "params": params})
         if fake.error:
             raise fake.error
-        return httpx.Response(200, json=OPENCAGE_BODY, request=httpx.Request("GET", url))
+        return httpx.Response(200, json=fake.body if fake.body is not None else OPENCAGE_BODY, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.Client, "get", fake_get)
     yield fake
-    geocode._geocode_cached.cache_clear()
+    geocode.clear_cache()

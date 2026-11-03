@@ -118,3 +118,42 @@ def test_list_get_delete(client, user, db):
 def test_profiles_require_auth(client):
     assert client.post("/profiles", json=PROFILE_BODY).status_code == 401
     assert client.get("/profiles").status_code == 401
+
+
+def _stored_utc(db, profile_id):
+    import uuid
+    from datetime import UTC
+
+    from app.models import BirthProfile
+
+    db.expire_all()
+    return db.get(BirthProfile, uuid.UUID(profile_id)).birth_datetime_utc.astimezone(UTC)
+
+
+def test_dst_gap_birth_time_is_normalised_forward(client, user, db):
+    from datetime import UTC, datetime
+
+    r = _create(client, user, birth_date="2024-03-10", birth_time="02:30")
+    assert r.status_code == 201
+    assert r.json()["profile"]["birth_time"] == "03:30"
+    assert _stored_utc(db, r.json()["profile"]["id"]) == datetime(2024, 3, 10, 7, 30, tzinfo=UTC)
+
+
+def test_dst_fold_birth_time_uses_first_occurrence(client, user, db):
+    from datetime import UTC, datetime
+
+    r = _create(client, user, birth_date="2024-11-03", birth_time="01:30")
+    assert r.json()["profile"]["birth_time"] == "01:30"
+    assert _stored_utc(db, r.json()["profile"]["id"]) == datetime(2024, 11, 3, 5, 30, tzinfo=UTC)
+
+
+def test_geocode_empty_result_not_cached(client, user, fake_opencage):
+    fake_opencage.body = {"results": []}
+    h = auth_headers(user)
+    assert client.get("/geocode", params={"q": "Nowhere"}, headers=h).json() == []
+    client.get("/geocode", params={"q": "Nowhere"}, headers=h)
+    assert len(fake_opencage.calls) == 2
+    fake_opencage.body = None
+    client.get("/geocode", params={"q": "Hull"}, headers=h)
+    client.get("/geocode", params={"q": "Hull"}, headers=h)
+    assert len(fake_opencage.calls) == 3

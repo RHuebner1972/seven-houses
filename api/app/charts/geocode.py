@@ -1,4 +1,4 @@
-from functools import lru_cache
+from collections import OrderedDict
 
 import httpx
 from pydantic import BaseModel
@@ -31,8 +31,15 @@ def _fetch(q: str) -> dict:
         return response.json()
 
 
-@lru_cache(maxsize=256)
-def _geocode_cached(normalised: str) -> tuple[Place, ...]:
+CACHE_SIZE = 256
+_cache: OrderedDict[str, tuple[Place, ...]] = OrderedDict()
+
+
+def clear_cache() -> None:
+    _cache.clear()
+
+
+def _lookup(normalised: str) -> tuple[Place, ...]:
     try:
         body = _fetch(normalised)
     except (httpx.HTTPError, ValueError):
@@ -52,4 +59,14 @@ def _geocode_cached(normalised: str) -> tuple[Place, ...]:
 
 
 def geocode(q: str) -> list[Place]:
-    return list(_geocode_cached(q.strip().lower()))
+    """Cached by normalised query; empty results and failures are never cached."""
+    key = q.strip().lower()
+    if key in _cache:
+        _cache.move_to_end(key)
+        return list(_cache[key])
+    places = _lookup(key)
+    if places:
+        _cache[key] = places
+        while len(_cache) > CACHE_SIZE:
+            _cache.popitem(last=False)
+    return list(places)
