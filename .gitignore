@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .env
 .superpowers/
+.env.*
+node_modules/
+.next/
+out/
+.vercel/
