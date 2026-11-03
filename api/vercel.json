@@ -1,0 +1,1 @@
+{"functions": {"index.py": {"runtime": "python3.12", "maxDuration": 300, "includeFiles": "app/astro/de440s.bsp"}}}
