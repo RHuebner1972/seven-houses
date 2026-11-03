@@ -31,6 +31,9 @@ def verify_token(token: str) -> TokenClaims:
             algorithms=[ALGORITHM],
             options={"require": ["sub", "exp", "iat"]},
         )
-        return TokenClaims(user_id=UUID(payload["sub"]), anon=bool(payload.get("anon", False)))
+        anon = payload.get("anon")
+        if not isinstance(anon, bool):
+            raise ValueError("anon claim must be a boolean")
+        return TokenClaims(user_id=UUID(payload["sub"]), anon=anon)
     except (jwt.PyJWTError, ValueError, TypeError, KeyError) as e:
         raise Unauthorized("Invalid or expired token") from e

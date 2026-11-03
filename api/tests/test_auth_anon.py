@@ -1,3 +1,4 @@
+import time
 from uuid import uuid4
 
 import pytest
@@ -71,14 +72,51 @@ def test_tampered_token_rejected():
         verify_token(t[:-2] + ("AA" if not t.endswith("AA") else "BB"))
 
 
-def test_non_uuid_sub_rejected():
+def _sign(payload: dict, algorithm: str = "HS256") -> str:
     import jwt
 
     from app.config import get_settings
 
-    t = jwt.encode({"sub": "nope", "anon": True}, get_settings().jwt_secret, algorithm="HS256")
+    return jwt.encode(payload, get_settings().jwt_secret, algorithm=algorithm)
+
+
+def _valid_payload(**overrides) -> dict:
+    now = int(time.time())
+    return {"sub": str(uuid4()), "anon": True, "iat": now, "exp": now + 3600, **overrides}
+
+
+def test_valid_hand_built_token_accepted():
+    assert verify_token(_sign(_valid_payload())).anon is True
+
+
+def test_non_uuid_sub_rejected():
     with pytest.raises(Unauthorized):
-        verify_token(t)
+        verify_token(_sign(_valid_payload(sub="nope")))
+
+
+def test_missing_exp_rejected():
+    payload = _valid_payload()
+    del payload["exp"]
+    with pytest.raises(Unauthorized):
+        verify_token(_sign(payload))
+
+
+@pytest.mark.parametrize("bad", ["false", "true", 1, None])
+def test_non_bool_anon_rejected(bad):
+    with pytest.raises(Unauthorized):
+        verify_token(_sign(_valid_payload(anon=bad)))
+
+
+def test_missing_anon_rejected():
+    payload = _valid_payload()
+    del payload["anon"]
+    with pytest.raises(Unauthorized):
+        verify_token(_sign(payload))
+
+
+def test_wrong_algorithm_rejected():
+    with pytest.raises(Unauthorized):
+        verify_token(_sign(_valid_payload(), algorithm="HS384"))
 
 
 def test_refresh_returns_new_token(client, db, user):
