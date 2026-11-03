@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic[email]
+pydantic-settings
+sqlalchemy>=2.0
+psycopg[binary]
+alembic
+pyjwt
+google-auth
+anthropic
+skyfield==1.55
+jplephem==2.24
+numpy==2.5.4
+tzdata==2026.6
+httpx
+resend
