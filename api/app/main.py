@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.router import router as auth_router
+from app.billing.router import router as billing_router
 from app.charts.router import router as charts_router
 from app.config import get_settings
 from app.daily.router import router as daily_router
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     app.include_router(charts_router)
     app.include_router(readings_router)
     app.include_router(daily_router)
+    app.include_router(billing_router)
 
     @app.get("/health")
     def health():

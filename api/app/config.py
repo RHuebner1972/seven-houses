@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     model_daily: str = "claude-haiku-4-5"
     app_base_url: str = "http://localhost:3000"
     ephemeris_path: str = "app/astro/de440s.bsp"
+    credit_products: dict[str, int] = {"sh_credits_5": 5, "sh_credits_15": 15, "sh_credits_40": 40}
 
     @field_validator("cors_origins", mode="before")
     @classmethod
