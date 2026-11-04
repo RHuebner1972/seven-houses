@@ -2,21 +2,41 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { StrictMode } from "react";
-import { Providers, useAuth } from "@/components/providers";
+import { StrictMode, useEffect } from "react";
+import { QueryClient } from "@tanstack/react-query";
+import { Providers as RealProviders, useAuth, useApi } from "@/components/providers";
+import type { ReactNode } from "react";
 import { BalancePill } from "@/components/balance-pill";
 import { decodeUserId } from "@/lib/auth";
 import { apiBase } from "@/lib/api";
 
 const BASE = apiBase();
+let qc: QueryClient;
+function Providers({ children }: { children: ReactNode }) {
+  return <RealProviders queryClient={qc}>{children}</RealProviders>;
+}
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterAll(() => server.close());
 
+const cap: { auth?: ReturnType<typeof useAuth>; api?: ReturnType<typeof useApi> } = {};
+function Grab() {
+  const auth = useAuth();
+  const api = useApi();
+  useEffect(() => {
+    cap.auth = auth;
+    cap.api = api;
+  });
+  return null;
+}
+
 let log: { path: string; auth: string | null }[] = [];
 const count = (path: string) => log.filter((l) => l.path === path).length;
 beforeEach(() => {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000 } } });
   log = [];
+  cap.auth = undefined;
+  cap.api = undefined;
   localStorage.clear();
 });
 afterEach(() => server.resetHandlers());
@@ -98,11 +118,12 @@ test("concurrent 401s share one anonymous mint", async () => {
     const { ready } = useAuth();
     return <span>{ready ? "ready" : "wait"}</span>;
   }
-  const { useApi } = await import("@/components/providers");
   function Caller() {
     const api = useApi();
     const { ready } = useAuth();
-    if (ready && me.length === 0) me = [api.me(), api.me()];
+    useEffect(() => {
+      if (ready && me.length === 0) me = [api.me(), api.me()];
+    }, [api, ready]);
     return null;
   }
   render(
@@ -123,11 +144,6 @@ test("signOut clears the token and mints a new anonymous one", async () => {
     logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "fresh", user_id: "u9" })),
     logged("/me", "get", () => HttpResponse.json({ user_id: "u", email: null, anon: true, balance: 5 })),
   );
-  let signOut: () => Promise<void> = async () => {};
-  function Grab() {
-    signOut = useAuth().signOut;
-    return null;
-  }
   render(
     <Providers>
       <Grab />
@@ -136,8 +152,13 @@ test("signOut clears the token and mints a new anonymous one", async () => {
   );
   expect(await screen.findByText("5")).toBeInTheDocument();
   expect(count("/auth/anonymous")).toBe(0);
+  let p!: Promise<void>;
   await act(async () => {
-    await signOut();
+    p = cap.auth!.signOut();
+  });
+  expect(screen.getByLabelText("Credit balance")).toHaveTextContent("—");
+  await act(async () => {
+    await p;
   });
   expect(localStorage.getItem("sh.token")).toBe("fresh");
   expect(count("/auth/anonymous")).toBe(1);
@@ -168,7 +189,7 @@ test("useAuth exposes userId from the stored token", async () => {
   await waitFor(() => expect(screen.getByTestId("uid")).toHaveTextContent("u-7"));
 });
 
-test("balance pill shows a dash while loading", () => {
+test("balance pill shows a dash while loading", async () => {
   server.use(
     http.get(`${BASE}/me`, () => new Promise(() => {})),
     http.post(`${BASE}/auth/anonymous`, () => new Promise(() => {})),
@@ -179,4 +200,93 @@ test("balance pill shows a dash while loading", () => {
     </Providers>,
   );
   expect(screen.getByLabelText("Credit balance")).toHaveTextContent("—");
+  // let the (hanging) bootstrap request reach this test's handler before the next test starts
+  await new Promise((r) => setTimeout(r, 30));
+});
+
+test("a straggler 401 for a stale token does not destroy a newer token", async () => {
+  localStorage.setItem("sh.token", "anon1");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  server.use(
+    logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "x", user_id: "x" })),
+    logged("/auth/google", "post", () => HttpResponse.json({ token: "real", user_id: "u" })),
+    http.get(`${BASE}/me`, async ({ request }) => {
+      const auth = request.headers.get("authorization");
+      if (auth === "Bearer anon1") {
+        await gate;
+        return HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 });
+      }
+      return HttpResponse.json({ user_id: "u", email: "a@b.c", anon: false, balance: 9 });
+    }),
+  );
+  render(
+    <Providers>
+      <Grab />
+    </Providers>,
+  );
+  await waitFor(() => expect(cap.auth?.ready).toBe(true));
+  const straggler = cap.api!.me();
+  await act(async () => {
+    await cap.auth!.signInWithGoogle("idt");
+  });
+  expect(localStorage.getItem("sh.token")).toBe("real");
+  release();
+  expect((await straggler).balance).toBe(9);
+  expect(localStorage.getItem("sh.token")).toBe("real");
+  expect(count("/auth/anonymous")).toBe(0);
+});
+
+test("signOut with a failing mint still clears cache and store", async () => {
+  localStorage.setItem("sh.token", "old");
+  server.use(
+    http.post(`${BASE}/auth/anonymous`, () => HttpResponse.error()),
+    http.get(`${BASE}/me`, ({ request }) =>
+      request.headers.get("authorization")
+        ? HttpResponse.json({ user_id: "u", email: null, anon: true, balance: 5 })
+        : HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 }),
+    ),
+  );
+  render(
+    <Providers>
+      <Grab />
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("5")).toBeInTheDocument();
+  await act(async () => {
+    await cap.auth!.signOut().catch(() => undefined);
+  });
+  expect(qc.getQueryData(["me"])).toBeUndefined();
+  expect(localStorage.getItem("sh.token")).toBeNull();
+});
+
+test("signInWithGoogle and verifyMagic adopt the token and refetch /me", async () => {
+  localStorage.setItem("sh.token", "anon");
+  let n = 0;
+  server.use(
+    logged("/auth/google", "post", () => HttpResponse.json({ token: "g1", user_id: "u" })),
+    logged("/auth/magic/verify", "post", () => HttpResponse.json({ token: "m1", user_id: "u" })),
+    logged("/me", "get", () => HttpResponse.json({ user_id: "u", email: null, anon: true, balance: ++n })),
+  );
+  render(
+    <Providers>
+      <Grab />
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("1")).toBeInTheDocument();
+  await act(async () => {
+    await cap.auth!.signInWithGoogle("idt");
+  });
+  expect(localStorage.getItem("sh.token")).toBe("g1");
+  expect(await screen.findByText("2")).toBeInTheDocument();
+  expect(log.filter((l) => l.path === "/me").at(-1)?.auth).toBe("Bearer g1");
+  await act(async () => {
+    await cap.auth!.verifyMagic("link");
+  });
+  expect(localStorage.getItem("sh.token")).toBe("m1");
+  expect(log.find((l) => l.path === "/auth/magic/verify")?.auth).toBe("Bearer g1");
+  expect(await screen.findByText("3")).toBeInTheDocument();
+  expect(log.filter((l) => l.path === "/me").at(-1)?.auth).toBe("Bearer m1");
 });

@@ -41,9 +41,11 @@ async function errorFrom(res: Response): Promise<ApiError> {
   return new ApiError(res.status, code, message);
 }
 
+export type OnUnauthorized = (failedToken: string | null) => Promise<string>;
+
 export function createApi(
   getToken: () => string | null,
-  onUnauthorized: () => Promise<string>,
+  onUnauthorized: OnUnauthorized,
   baseUrl: string = apiBase(),
 ) {
   async function send(path: string, o: RequestOptions, token: string | null): Promise<Response> {
@@ -70,7 +72,7 @@ export function createApi(
     let res = await send(path, o, token);
     if (res.status === 401 && mode === "required") {
       await res.body?.cancel().catch(() => undefined);
-      const fresh = await onUnauthorized();
+      const fresh = await onUnauthorized(token);
       res = await send(path, o, fresh);
     }
     if (!res.ok) throw await errorFrom(res);

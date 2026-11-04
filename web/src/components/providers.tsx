@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { createApi, type Api } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import { decodeUserId, localStorageTokenStore, type TokenStore } from "@/lib/auth";
 
 export interface AuthValue {
@@ -78,7 +79,10 @@ export function AuthProvider({
     };
     const api: Api = createApi(
       () => store.get(),
-      () => {
+      (failed) => {
+        // A stale 401 must not destroy a newer valid token.
+        const cur = store.get();
+        if (cur && cur !== failed) return Promise.resolve(cur);
         store.clear();
         return mint();
       },
@@ -123,10 +127,17 @@ export function AuthProvider({
   );
 
   const signOut = useCallback(async () => {
-    store.clear();
-    setToken(null);
-    await mint();
+    // cancel synchronously so in-flight fetches cannot repopulate the cache
+    const cancelled = queryClient.cancelQueries();
     queryClient.clear();
+    await cancelled;
+    try {
+      store.clear();
+      setToken(null);
+      await mint();
+    } finally {
+      queryClient.clear();
+    }
   }, [store, mint, queryClient]);
 
   const value = useMemo<AuthInternals>(
@@ -152,18 +163,26 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   return <BillingContext.Provider value={null}>{children}</BillingContext.Provider>;
 }
 
-export function Providers({ children }: { children: ReactNode }) {
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 10_000,
-            retry: process.env.NODE_ENV === "test" ? false : 1,
-          },
-        },
-      }),
-  );
+function defaultQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 10_000,
+        retry: (count, err) =>
+          !(err instanceof ApiError && err.status >= 400 && err.status < 500) && count < 1,
+      },
+    },
+  });
+}
+
+export function Providers({
+  children,
+  queryClient,
+}: {
+  children: ReactNode;
+  queryClient?: QueryClient;
+}) {
+  const [client] = useState(() => queryClient ?? defaultQueryClient());
   return (
     <QueryClientProvider client={client}>
       <AuthProvider>
