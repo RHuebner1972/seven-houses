@@ -1,4 +1,5 @@
 // Generates the placeholder deck (79 WebP files) from SVG. Deterministic: no Math.random().
+// Text is rendered with system fonts, so byte-determinism holds per machine, not across machines.
 // Real artwork replaces public/deck/<id>.webp 1:1.
 import fs from "node:fs";
 import path from "node:path";

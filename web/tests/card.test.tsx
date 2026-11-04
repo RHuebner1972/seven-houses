@@ -43,3 +43,19 @@ test("respects reduced motion", () => {
   const { container } = render(<Card id="major-00-fool" faceUp={false} />);
   expect(container.innerHTML).toContain("motion-reduce:transition-none");
 });
+
+test("face-down hides the front from the a11y tree; face-up exposes it", () => {
+  const { rerender } = render(<Card id="major-00-fool" faceUp={false} />);
+  expect(screen.queryByAltText("The Fool, upright")).not.toBeNull();
+  expect(screen.queryByRole("img", { name: "The Fool, upright" })).toBeNull();
+  rerender(<Card id="major-00-fool" faceUp />);
+  expect(screen.getByRole("img", { name: "The Fool, upright" })).toBeInTheDocument();
+});
+
+test("failed state resets when the id changes", () => {
+  const { rerender } = render(<Card id="major-00-fool" faceUp />);
+  fireEvent.error(screen.getByAltText("The Fool, upright"));
+  expect(screen.queryByAltText("The Fool, upright")).toBeNull();
+  rerender(<Card id="major-01-magician" faceUp />);
+  expect(screen.getByAltText("The Magician, upright")).toHaveAttribute("src", "/deck/major-01-magician.webp");
+});

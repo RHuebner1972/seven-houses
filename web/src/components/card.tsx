@@ -28,8 +28,9 @@ export function Card({
   size = "md",
   className = "",
 }: CardProps) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const dims = SIZES[size];
+  const failed = failedSrc === imageUrl(id);
   const style = { width: dims.width, height: dims.height, perspective: 1000 };
   const interactive = onFlip !== undefined && !faceUp;
 
@@ -41,9 +42,11 @@ export function Card({
         transform: faceUp ? "rotateY(180deg)" : "rotateY(0deg)",
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={BACK_URL} alt="" draggable={false} className={`${FACE} rounded-[4%] object-cover`} />
-      <div className={FACE} style={{ transform: "rotateY(180deg)" }}>
+      <div className={FACE} aria-hidden={faceUp}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={BACK_URL} alt="" draggable={false} className="h-full w-full rounded-[4%] object-cover" />
+      </div>
+      <div className={FACE} aria-hidden={!faceUp} style={{ transform: "rotateY(180deg)" }}>
         {failed ? (
           <div className="flex h-full w-full items-center justify-center rounded-[4%] border-2 border-gold bg-bg p-2 text-center font-display text-gold-hi">
             <span className="inline-block" style={{ transform: reversed ? "rotate(180deg)" : undefined }}>
@@ -56,7 +59,7 @@ export function Card({
             src={imageUrl(id)}
             alt={cardAlt(id, reversed)}
             draggable={false}
-            onError={() => setFailed(true)}
+            onError={() => setFailedSrc(imageUrl(id))}
             className="h-full w-full rounded-[4%] object-cover"
             style={{ transform: reversed ? "rotate(180deg)" : undefined }}
           />
