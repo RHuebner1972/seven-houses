@@ -10,6 +10,10 @@ import type { DrawnCard, Reading } from "@/lib/types";
 export const DAILY_CACHE_KEY = "sh.lastDaily";
 export const POLL_INTERVAL_MS = 2000;
 export const POLL_MAX_ATTEMPTS = 30;
+const GENERATION_FAILED: StreamError = {
+  code: "generation_failed",
+  message: "We couldn't prepare your card. Please try again.",
+};
 const STILL_PREPARING: StreamError = { code: "still_preparing", message: "Still preparing your card…" };
 
 export type DailyState = "idle" | "cached" | "streaming" | "complete" | "waiting" | "error";
@@ -26,9 +30,10 @@ function parseCache(raw: string | null): Reading | null {
   }
 }
 
-function writeCache(reading: Reading) {
+/** `day` is the local date the reading belongs to, never the (possibly later) write time. */
+function writeCache(reading: Reading, day: string) {
   try {
-    const c: Cached = { localDate: localDate(), reading };
+    const c: Cached = { localDate: day, reading };
     localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify(c));
   } catch {
     /* storage full or unavailable */
@@ -64,6 +69,9 @@ export function useDaily() {
   const textRef = useRef("");
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCtl = useRef<AbortController | null>(null);
+  // local date captured when the reveal starts: the day the server assigns the reading to
+  const dayRef = useRef<string>("");
+  const restartedRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -80,9 +88,9 @@ export function useDaily() {
     };
   }, [stopPolling]);
 
-  const complete = useCallback((r: Reading) => {
+  const complete = useCallback((r: Reading, day: string) => {
     if (!alive.current) return;
-    writeCache(r);
+    writeCache(r, day);
     cardRef.current = r.cards[0];
     textRef.current = r.text;
     setReading(r);
@@ -98,11 +106,20 @@ export function useDaily() {
     setState("error");
   }, []);
 
+  /** Re-issue the daily request (internal: does not reset the one-shot restart guard). */
+  const begin = useCallback(() => {
+    if (!alive.current) return;
+    stopPolling();
+    dayRef.current = localDate();
+    setError(undefined);
+    setState("streaming");
+  }, [stopPolling]);
+
   const poll = useCallback(() => {
     stopPolling();
     setState("waiting");
     let attempts = 0;
-    const today = localDate();
+    const today = dayRef.current || localDate();
     const tz = localTimeZone();
     const tick = async () => {
       pollTimer.current = null;
@@ -112,16 +129,25 @@ export function useDaily() {
       try {
         const [latest] = await api.readings(1);
         if (!alive.current || ctl.signal.aborted) return;
-        if (
+        const todays =
           latest &&
           latest.spread_type === "daily" &&
-          latest.status === "complete" &&
-          localDate(tz, new Date(latest.created_at)) === today
-        ) {
+          localDate(tz, new Date(latest.created_at)) === today;
+        if (todays && latest.status === "failed") {
+          // generation died server-side: re-request once instead of polling out the minute
+          pollCtl.current = null;
+          if (restartedRef.current) fail(GENERATION_FAILED);
+          else {
+            restartedRef.current = true;
+            begin();
+          }
+          return;
+        }
+        if (todays && latest.status === "complete") {
           const r = await api.reading(latest.id);
           if (!alive.current || ctl.signal.aborted) return;
           pollCtl.current = null;
-          complete(r);
+          complete(r, today);
           return;
         }
       } catch {
@@ -133,7 +159,7 @@ export function useDaily() {
       else pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
     };
     pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
-  }, [api, complete, fail, stopPolling]);
+  }, [api, begin, complete, fail, stopPolling]);
 
   /**
    * Fed to <ReadingStream>: issues POST /daily under the stream's AbortSignal, so unmounting
@@ -157,7 +183,7 @@ export function useDaily() {
         throw abortError();
       }
       if (res.kind === "reading") {
-        complete(res.reading);
+        complete(res.reading, localDate(localTimeZone(), new Date(res.reading.created_at)));
         throw abortError();
       }
       cardRef.current = undefined;
@@ -188,7 +214,7 @@ export function useDaily() {
         fail({ code: "bad_response", message: "The reading arrived without a card." });
         return;
       }
-      complete({
+      const r: Reading = {
         id: readingId,
         spread_type: "daily",
         cards: [c],
@@ -197,17 +223,18 @@ export function useDaily() {
         text: textRef.current,
         status: "complete",
         created_at: new Date().toISOString(),
-      });
+      };
+      complete(r, dayRef.current || localDate());
     },
     [complete, fail],
   );
 
   const start = useCallback(() => {
     if (!alive.current) return;
-    stopPolling();
-    setError(undefined);
-    setState((s) => (s === "idle" || s === "error" ? "streaming" : s));
-  }, [stopPolling]);
+    if (phase !== "idle" && phase !== "error") return;
+    restartedRef.current = false;
+    begin();
+  }, [begin, phase]);
 
   const retry = start;
 

@@ -49,6 +49,7 @@ export function ReadingStream(props: ReadingStreamProps) {
   useEffect(() => {
     let active = true;
     let finished = false;
+    let started = false;
     const controller = new AbortController();
     controllerRef.current = controller;
 
@@ -60,6 +61,14 @@ export function ReadingStream(props: ReadingStreamProps) {
     };
 
     (async () => {
+      // Defer one microtask: StrictMode's discarded mount is cleaned up synchronously, so it
+      // never issues the request (no duplicate POST, no onAbort).
+      await Promise.resolve();
+      if (!active) {
+        finished = true;
+        return;
+      }
+      started = true;
       try {
         const body = await cbs.current.source(controller.signal);
         if (!active) {
@@ -105,7 +114,7 @@ export function ReadingStream(props: ReadingStreamProps) {
       active = false;
       controller.abort();
       if (controllerRef.current === controller) controllerRef.current = null;
-      if (!finished) cbs.current.onAbort?.(textRef.current);
+      if (started && !finished) cbs.current.onAbort?.(textRef.current);
     };
   }, [attempt]);
 

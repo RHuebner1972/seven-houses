@@ -3,13 +3,24 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { QueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { Providers as RealProviders } from "@/components/providers";
 import { ReadingStream } from "@/components/reading-stream";
 import TodayPage from "@/app/page";
 import { apiBase } from "@/lib/api";
 import { localDate } from "@/lib/tz";
 import type { Reading, ReadingSummary } from "@/lib/types";
+
+// localDate() with no `at` returns tzMock.today when set (to cross midnight); otherwise real.
+const tzMock = vi.hoisted(() => ({ today: undefined as string | undefined }));
+vi.mock("@/lib/tz", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/tz")>();
+  return {
+    ...actual,
+    localDate: (tz?: string, at?: Date) =>
+      at === undefined && tzMock.today ? tzMock.today : actual.localDate(tz, at),
+  };
+});
 
 const BASE = apiBase();
 let qc: QueryClient;
@@ -27,6 +38,7 @@ const count = (method: string, path: string) =>
 beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   log = [];
+  tzMock.today = undefined;
   localStorage.clear();
   localStorage.setItem("sh.token", "tok");
 });
@@ -109,7 +121,8 @@ test("tap flips the card and streams today's reading", async () => {
 });
 
 test("existing complete daily renders without streaming", async () => {
-  server.use(onDaily(() => HttpResponse.json({ reading: reading() })));
+  const created = new Date(Date.now() - 86_400_000);
+  server.use(onDaily(() => HttpResponse.json({ reading: reading({ created_at: created.toISOString() }) })));
   render(
     <Providers>
       <TodayPage />
@@ -120,7 +133,10 @@ test("existing complete daily renders without streaming", async () => {
   expect(screen.getByText("Second thought.")).toBeInTheDocument();
   expect(screen.getByAltText("The Magician, reversed")).toBeInTheDocument();
   expect(document.querySelector("[data-streaming]")).toBeNull();
-  expect(JSON.parse(localStorage.getItem("sh.lastDaily")!).reading.id).toBe("r9");
+  const cached = JSON.parse(localStorage.getItem("sh.lastDaily")!);
+  expect(cached.reading.id).toBe("r9");
+  // stamped with the reading's own local date, not the write time
+  expect(cached.localDate).toBe(localDate(undefined, created));
 });
 
 test("a cached daily for today renders instantly without a request", async () => {
@@ -291,7 +307,13 @@ test("a non-409 API error shows its message and Retry re-requests", async () => 
 
 test("unmounting the Today page mid-stream aborts the request", async () => {
   const abort = vi.spyOn(AbortController.prototype, "abort");
-  server.use(onDaily(() => sse([CARDS, frame("delta", { text: "Midway" })], { close: false })));
+  let req: Request | undefined;
+  server.use(
+    http.post(`${BASE}/daily`, ({ request }) => {
+      req = request;
+      return sse([CARDS, frame("delta", { text: "Midway" })], { close: false });
+    }),
+  );
   const { unmount } = render(
     <Providers>
       <TodayPage />
@@ -303,6 +325,7 @@ test("unmounting the Today page mid-stream aborts the request", async () => {
   abort.mockClear();
   unmount();
   expect(abort).toHaveBeenCalled();
+  await waitFor(() => expect(req?.signal.aborted).toBe(true));
   expect(localStorage.getItem("sh.lastDaily")).toBeNull();
 });
 
@@ -357,4 +380,87 @@ test("ReadingStream: SSE error frame shows message and Retry re-runs source", as
   await waitFor(() => expect(onDone).toHaveBeenCalledWith("rx"));
   expect(container.querySelector("[data-streaming]")).toHaveAttribute("data-streaming", "false");
   expect(source).toHaveBeenCalledTimes(2);
+});
+
+test("a reveal that completes after midnight is cached under the day it started", async () => {
+  tzMock.today = "2026-11-03";
+  let ctl!: ReadableStreamDefaultController<Uint8Array>;
+  server.use(
+    onDaily(() => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          ctl = c;
+          c.enqueue(enc.encode(CARDS));
+          c.enqueue(enc.encode(frame("delta", { text: "Late night" })));
+        },
+      });
+      return new HttpResponse(stream, { headers: { "content-type": "text/event-stream" } });
+    }),
+  );
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  await reveal();
+  expect(await screen.findByText(/Late night/)).toBeInTheDocument();
+  tzMock.today = "2026-11-04";
+  ctl.enqueue(enc.encode(frame("done", { reading_id: "r1" })));
+  ctl.close();
+  expect(await screen.findByText(/renews at midnight/i)).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem("sh.lastDaily")!).localDate).toBe("2026-11-03");
+});
+
+test("409 whose daily failed re-requests once, then surfaces an error with Retry", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  server.use(
+    onDaily(() =>
+      HttpResponse.json({ error: { code: "generation_in_progress", message: "busy" } }, { status: 409 }),
+    ),
+    http.get(`${BASE}/readings`, () => {
+      log.push({ method: "GET", path: "/readings" });
+      return HttpResponse.json([
+        {
+          id: "rf",
+          spread_type: "daily",
+          cards: [],
+          question: null,
+          status: "failed",
+          created_at: new Date().toISOString(),
+          excerpt: "",
+        } satisfies ReadingSummary,
+      ]);
+    }),
+  );
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  await reveal();
+  expect(await screen.findByText(/being prepared/i)).toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  await waitFor(() => expect(count("POST", "/daily")).toBe(2));
+  expect(await screen.findByText(/being prepared/i)).toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(await screen.findByText(/couldn't prepare your card/i)).toBeInTheDocument();
+  expect(count("POST", "/daily")).toBe(2);
+  expect(count("GET", "/readings")).toBe(2);
+  server.use(onDaily(() => HttpResponse.json({ reading: reading() })));
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  expect(await screen.findByText("Stored wisdom.")).toBeInTheDocument();
+  expect(count("POST", "/daily")).toBe(3);
+});
+
+test("ReadingStream under StrictMode calls source once and never fires onAbort", async () => {
+  const onAbort = vi.fn();
+  const source = vi.fn(async () => sse([frame("delta", { text: "Once" }), frame("done", { reading_id: "r" })]).body!);
+  render(
+    <StrictMode>
+      <ReadingStream source={source} onAbort={onAbort} />
+    </StrictMode>,
+  );
+  expect(await screen.findByText("Once")).toBeInTheDocument();
+  expect(source).toHaveBeenCalledTimes(1);
+  expect(onAbort).not.toHaveBeenCalled();
 });
