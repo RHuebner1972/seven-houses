@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0B0B1F;
+  --color-bg-deep: #05050C;
+  --color-gold: #C9A84C;
+  --color-gold-hi: #E8D5A3;
+  --color-ink: #F2EBDD;
+  --color-muted: #9A94B3;
+
+  --font-display: var(--font-display), Georgia, serif;
+  --font-body: var(--font-body), system-ui, sans-serif;
+}
+
+:root {
+  --bg: #0B0B1F;
+  --bg-deep: #05050C;
+  --gold: #C9A84C;
+  --gold-hi: #E8D5A3;
+  --ink: #F2EBDD;
+  --muted: #9A94B3;
+}
+
+html {
+  background-color: var(--bg-deep);
+}
+
+body {
+  @apply bg-bg text-ink font-body;
+  min-height: 100vh;
+  background-image: radial-gradient(ellipse at 50% 0%, var(--bg) 0%, var(--bg) 45%, var(--bg-deep) 100%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3, h4 {
+  @apply font-display;
+}
