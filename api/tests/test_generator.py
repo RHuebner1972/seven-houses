@@ -66,3 +66,12 @@ def test_generator_exit_not_swallowed(fake_anthropic):
     gen.close()  # must not raise GenerationError
     with pytest.raises(StopIteration):
         next(gen)
+
+
+def test_client_has_bounded_timeouts_and_one_retry(fake_anthropic):
+    fake_anthropic.chunks = ["a"]
+    list(stream_reading("m", [], max_tokens=10))
+    timeout = fake_anthropic.client_kwargs["timeout"]
+    assert isinstance(timeout, httpx.Timeout)
+    assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (10.0, 60.0, 10.0, 10.0)
+    assert fake_anthropic.client_kwargs["max_retries"] == 1

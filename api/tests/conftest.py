@@ -212,6 +212,7 @@ class FakeAnthropic:
         self.raise_after_chunks: int | None = None
         self.error: Exception | None = None
         self.last_kwargs: dict | None = None
+        self.client_kwargs: dict | None = None
 
     @property
     def last_messages(self):
@@ -256,7 +257,7 @@ def fake_anthropic(monkeypatch):
 
     class _Client:
         def __init__(self, **kwargs):
-            self.client_kwargs = kwargs
+            fake.client_kwargs = kwargs
             self.messages = _Messages()
 
     monkeypatch.setattr(generator.anthropic, "Anthropic", _Client)

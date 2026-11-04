@@ -20,6 +20,7 @@ from app.ratelimit import (
     check_ip_rate,
     client_ip,
 )
+from app.readings.service import sweep_stale_pending
 
 router = APIRouter()
 
@@ -58,6 +59,7 @@ def refresh(user: Annotated[User, Depends(current_user)]):
 
 @router.get("/me")
 def me(user: Annotated[User, Depends(current_user)], db: Annotated[Session, Depends(get_db)]):
+    sweep_stale_pending(db, user.id)  # refunds show up in the balance below
     return {
         "user_id": str(user.id),
         "email": user.email,

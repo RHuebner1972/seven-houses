@@ -479,3 +479,91 @@ def test_fail_if_pending_unknown_id(db):
     from app.readings.service import fail_if_pending
 
     assert fail_if_pending(db, uuid4()) is False
+
+
+# --- stale pending + deadline ------------------------------------------------
+
+
+def _backdate(db, reading, minutes):
+    from datetime import UTC, datetime, timedelta
+
+    past = datetime.now(UTC) - timedelta(minutes=minutes)
+    reading.created_at = past
+    reading.updated_at = past
+    db.commit()
+
+
+def test_sweep_fails_only_stale_pending_of_that_user(db, user, other_user, user_with_credits):
+    from app.ledger.service import credit
+    from app.readings.service import sweep_stale_pending
+
+    user_with_credits(3)
+    credit(db, other_user.id, 1, "grant", "g-other")
+    db.commit()
+    stale = start_reading(db, user, "three_card", None, None)
+    fresh = start_reading(db, user, "three_card", None, None)
+    others = start_reading(db, other_user, "three_card", None, None)
+    _backdate(db, stale, 7)
+    _backdate(db, others, 7)
+    assert sweep_stale_pending(db, user.id) == 1
+    db.expire_all()
+    assert db.get(Reading, stale.id).status == "failed"
+    assert db.get(Reading, fresh.id).status == "pending"
+    assert db.get(Reading, others.id).status == "pending"
+    assert balance(db, user.id) == 2
+    assert sweep_stale_pending(db, user.id) == 0
+
+
+def test_start_reading_sweeps_stale_pending(db, user, user_with_credits):
+    user_with_credits(1)
+    stale = start_reading(db, user, "three_card", None, None)
+    _backdate(db, stale, 7)
+    assert balance(db, user.id) == 0
+    r = start_reading(db, user, "three_card", None, None)  # the refund pays for this one
+    db.expire_all()
+    assert db.get(Reading, stale.id).status == "failed"
+    assert r.status == "pending" and balance(db, user.id) == 0
+    assert ("refund", 1, f"{stale.id}:refund") in _ledger(db, user)
+
+
+def test_me_sweeps_stale_pending(client, db, user, user_with_credits):
+    from tests.conftest import auth_headers
+
+    user_with_credits(1)
+    stale = start_reading(db, user, "three_card", None, None)
+    _backdate(db, stale, 7)
+    r = client.get("/me", headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["balance"] == 1
+    db.expire_all()
+    assert db.get(Reading, stale.id).status == "failed"
+
+
+def test_retry_accepts_stale_pending(db, user, user_with_credits):
+    user_with_credits(1)
+    r = start_reading(db, user, "three_card", None, None)
+    with pytest.raises(ValidationFailed):
+        retry_reading(db, user, r.id)  # fresh pending: still in progress
+    _backdate(db, r, 7)
+    r = retry_reading(db, user, r.id)
+    assert r.status == "pending" and r.token_usage["retries"] == 1
+    assert balance(db, user.id) == 0
+    assert _ledger(db, user) == [
+        ("reading", -1, str(r.id)),
+        ("refund", 1, f"{r.id}:refund"),
+        ("reading", -1, f"{r.id}:retry1"),
+    ]
+
+
+def test_generation_deadline_exceeded_fails_and_refunds(
+    db, user, user_with_credits, fake_anthropic, monkeypatch
+):
+    from app.readings import service
+
+    user_with_credits(1)
+    fake_anthropic.chunks = ["a", "b"]
+    monkeypatch.setattr(service, "GENERATION_DEADLINE_SECONDS", -1.0)
+    r = start_reading(db, user, "three_card", None, None)
+    with pytest.raises(GenerationError, match="deadline"):
+        list(run_generation(db, r))
+    db.refresh(r)
+    assert r.status == "failed" and balance(db, user.id) == 1

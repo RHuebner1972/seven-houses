@@ -10,7 +10,7 @@ idempotent.
 import logging
 import time
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -55,6 +55,24 @@ def _debit_reference(reading_id: UUID, retry: int) -> str:
     return f"{reading_id}:retry{retry}" if retry else str(reading_id)
 
 
+def sweep_stale_pending(db: Session, user_id: UUID, older_than: timedelta = STALE_PENDING) -> int:
+    """Fail and refund the user's readings left `pending` by a dead stream.
+
+    A live generation always writes within its deadline (< STALE_PENDING), so a
+    pending reading untouched for longer has nothing behind it. Returns the count.
+    """
+    cutoff = datetime.now(UTC) - older_than
+    ids = db.scalars(
+        select(Reading.id).where(
+            Reading.user_id == user_id, Reading.status == "pending", Reading.updated_at < cutoff
+        )
+    ).all()
+    swept = sum(fail_if_pending(db, reading_id) for reading_id in ids)
+    if swept:
+        logger.warning("user %s: failed and refunded %d stale pending reading(s)", user_id, swept)
+    return swept
+
+
 def start_reading(
     db: Session,
     user: User,
@@ -63,6 +81,7 @@ def start_reading(
     profile_id: UUID | None,
 ) -> Reading:
     """Validate, draw, create a pending reading and debit its cost in one transaction."""
+    sweep_stale_pending(db, user.id)
     if spread_type not in SPREADS or spread_type == "daily":
         raise ValidationFailed(f"spread_type: unknown or not purchasable: {spread_type!r}")
     question = (question or "").strip() or None
@@ -139,6 +158,8 @@ def run_generation(
             except StopIteration as stop:
                 usage = stop.value
                 break
+            if _clock() > deadline:
+                raise GenerationError("generation deadline exceeded")
             buffer += chunk
             delivered += 1
             yield chunk
@@ -238,7 +259,12 @@ def fail_if_pending(db: Session, reading_id: UUID, attempt: int | None = None) -
 
 
 def retry_reading(db: Session, user: User, reading_id: UUID) -> Reading:
-    """Re-debit a failed reading and reset it to pending, keeping its cards."""
+    """Re-debit a failed reading and reset it to pending, keeping its cards.
+
+    A stale pending reading (see `sweep_stale_pending`) is failed first, so it can
+    be retried too.
+    """
+    sweep_stale_pending(db, user.id)
     reading = db.scalar(
         select(Reading).where(Reading.id == reading_id, Reading.user_id == user.id)
     )
