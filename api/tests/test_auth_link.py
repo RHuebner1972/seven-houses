@@ -341,3 +341,83 @@ def test_magic_verify_with_bearer_merges_into_existing_owner(
     assert db.get(User, user.id) is None
     assert db.get(BirthProfile, profile.id).user_id == existing.id
     assert client.post("/auth/magic/verify", json={"token": token}).status_code == 401
+
+
+def test_merge_locks_anonymous_user_so_concurrent_debit_waits(
+    db, db_url, user, other_user_google_g1
+):
+    """Deterministic via pg_locks: while the merge (paused after taking its lock) is
+    open, a debit for the anonymous user blocks on the users row; once the merge
+    commits the user is gone and the debit fails with InsufficientCredits."""
+    import threading
+    import time
+    from uuid import uuid4
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    from app.errors import InsufficientCredits
+    from app.ledger.service import credit, debit_for_reading
+
+    user_id, owner_id = user.id, other_user_google_g1.id
+    credit(db, user_id, 3, "grant", f"grant-{uuid4()}")
+    db.commit()
+    engine = create_engine(db_url)
+    locked, release = threading.Event(), threading.Event()
+    outcome: dict = {}
+    real_balance = linking.balance
+
+    def paused_balance(session, user_id):
+        locked.set()  # merge_anonymous_into has taken its row lock by now
+        assert release.wait(timeout=10)
+        return real_balance(session, user_id)
+
+    def merge():
+        with Session(engine) as s:
+            linking.link_and_commit(s, s.get(User, user_id), "google", "g1", "a@x.io")
+
+    def debit():
+        with Session(engine) as s:
+            outcome["pid"] = s.execute(text("select pg_backend_pid()")).scalar()
+            try:
+                debit_for_reading(s, user_id, 1, uuid4())
+                s.commit()
+                outcome["result"] = "ok"
+            except InsufficientCredits:
+                s.rollback()
+                outcome["result"] = "insufficient"
+
+    try:
+        orig = linking.balance
+        linking.balance = paused_balance
+        t_merge = threading.Thread(target=merge)
+        t_merge.start()
+        assert locked.wait(timeout=10)
+        t_debit = threading.Thread(target=debit)
+        t_debit.start()
+        waiting = False
+        with engine.connect() as watcher:
+            for _ in range(200):
+                pid = outcome.get("pid")
+                if pid is not None and watcher.execute(
+                    text("select count(*) from pg_locks where pid = :pid and not granted"), {"pid": pid}
+                ).scalar():
+                    waiting = True
+                    break
+                if "result" in outcome:
+                    break
+                time.sleep(0.025)
+        release.set()
+        t_merge.join(timeout=10)
+        t_debit.join(timeout=10)
+    finally:
+        linking.balance = orig
+        release.set()
+        engine.dispose()
+    assert waiting, f"debit did not wait for the merge lock (outcome={outcome})"
+    assert outcome["result"] == "insufficient"
+    db.expire_all()
+    assert db.get(User, user_id) is None
+    from app.ledger.service import balance
+
+    assert balance(db, owner_id) == 3

@@ -652,3 +652,54 @@ def test_truncated_daily_reading_completes_with_footer(db, user, fake_anthropic)
     list(run_generation(db, r, max_tokens=600))
     db.refresh(r)
     assert r.status == "complete" and r.text == f"Your card\n\n{FOOTER}"
+
+
+def test_sweep_leaves_reading_written_between_select_and_fail(
+    db, engine, user, user_with_credits, monkeypatch
+):
+    """The fail step re-checks staleness: a reading bumped after the sweep selected
+    it (a live stream persisting text) is not failed and not refunded."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import update
+    from sqlalchemy.orm import Session
+
+    from app.readings import service
+
+    user_with_credits(1)
+    r = start_reading(db, user, "three_card", None, None)
+    _backdate(db, r, 7)
+    real = service.fail_if_pending
+
+    def bump_then_fail(*args, **kwargs):
+        with Session(engine) as other:
+            other.execute(
+                update(Reading).where(Reading.id == r.id).values(updated_at=datetime.now(UTC))
+            )
+            other.commit()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(service, "fail_if_pending", bump_then_fail)
+    assert service.sweep_stale_pending(db, user.id) == 0
+    db.expire_all()
+    assert db.get(Reading, r.id).status == "pending"
+    assert balance(db, user.id) == 0
+    assert _ledger(db, user) == [("reading", -1, str(r.id))]
+
+
+def test_sweep_leaves_reading_retried_between_select_and_fail(db, user, user_with_credits):
+    """An attempt observed at select time that has since moved on is left alone."""
+    from app.readings.service import fail_if_pending
+
+    user_with_credits(1)
+    r = start_reading(db, user, "three_card", None, None)
+    assert fail_if_pending(db, r.id, attempt=1) is False  # reading is on attempt 0
+    db.expire_all()
+    assert db.get(Reading, r.id).status == "pending" and balance(db, user.id) == 0
+
+
+def test_generation_deadline_leaves_room_for_one_read_within_vercel_limit():
+    from app.readings import generator, service
+
+    assert service.GENERATION_DEADLINE_SECONDS == 220
+    assert service.GENERATION_DEADLINE_SECONDS + generator.CLIENT_TIMEOUT.read < 300

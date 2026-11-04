@@ -161,3 +161,27 @@ def test_concurrent_restart_of_failed_daily_only_one_wins(db, engine, user):
         with pytest.raises(Conflict) as ei:
             restart_daily(other, stale_view)
         assert ei.value.code == "generation_in_progress"
+
+
+def test_restart_daily_does_not_fail_a_reading_written_meanwhile(db, engine, user):
+    """restart_daily's stale fail is conditional: if the pending daily was written
+    after it was judged stale, it is neither failed nor regenerated (409)."""
+    from datetime import UTC, datetime
+
+    import pytest
+    from sqlalchemy import update
+    from sqlalchemy.orm import Session
+
+    from app.daily.service import restart_daily
+    from app.errors import Conflict
+
+    reading = _pending_daily(db, user, minutes_ago=7)
+    with Session(engine) as other:
+        other.execute(
+            update(Reading).where(Reading.id == reading.id).values(updated_at=datetime.now(UTC))
+        )
+        other.commit()
+    with pytest.raises(Conflict):
+        restart_daily(db, reading)
+    db.expire_all()
+    assert db.get(Reading, reading.id).status == "pending"

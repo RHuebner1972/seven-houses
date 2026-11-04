@@ -45,7 +45,9 @@ def restart_daily(db: Session, reading: Reading) -> Reading:
     requests only one wins; the loser gets 409 generation_in_progress.
     """
     if reading.status == "pending":
-        fail_if_pending(db, reading.id)  # stale: a dead stream left it pending
+        # Stale: a dead stream left it pending. Conditional on still being stale, so a
+        # stream that wrote meanwhile is not failed (the claim below then 409s).
+        fail_if_pending(db, reading.id, stale_before=datetime.now(UTC) - STALE_PENDING)
     claimed = db.execute(
         update(Reading)
         .where(Reading.id == reading.id, Reading.status == "failed")

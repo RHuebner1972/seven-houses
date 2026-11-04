@@ -37,6 +37,10 @@ def merge_anonymous_into(db: Session, current: User, owner: User) -> None:
     dropped; its reading still moves). Runs in the caller's transaction, so a
     failure rolls back with the link and leaves both users untouched.
     """
+    # Lock the anonymous user's row first: debit_for_reading locks the same row, so a
+    # concurrent debit waits for the merge (and then finds the user gone) instead of
+    # landing between the balance read and the delete.
+    db.execute(select(User.id).where(User.id == current.id).with_for_update())
     for model in (BirthProfile, Reading, GenerationEvent):
         db.execute(update(model).where(model.user_id == current.id).values(user_id=owner.id))
     db.execute(

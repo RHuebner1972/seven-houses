@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 from app.astro.chart import ChartData
@@ -29,9 +29,10 @@ from app.tarot.spreads import SPREADS
 logger = logging.getLogger(__name__)
 
 PERSIST_EVERY_CHUNKS = 20
-# Wall-clock budget for one generation, including a drain after disconnect; kept
-# under Vercel's 300 s maxDuration so a stream can never pin the function past it.
-GENERATION_DEADLINE_SECONDS = 240.0
+# Wall-clock budget for one generation, including a drain after disconnect. Checked
+# between chunks, so one in-flight read (<= 60 s client read timeout) can overrun it;
+# 220 + 60 stays under Vercel's 300 s maxDuration.
+GENERATION_DEADLINE_SECONDS = 220.0
 _clock = time.monotonic
 # A pending reading not written for this long has no live stream behind it (the
 # generation deadline is well inside it); it may be failed and refunded.
@@ -62,12 +63,19 @@ def sweep_stale_pending(db: Session, user_id: UUID, older_than: timedelta = STAL
     pending reading untouched for longer has nothing behind it. Returns the count.
     """
     cutoff = datetime.now(UTC) - older_than
-    ids = db.scalars(
-        select(Reading.id).where(
+    rows = db.execute(
+        select(Reading.id, Reading.token_usage).where(
             Reading.user_id == user_id, Reading.status == "pending", Reading.updated_at < cutoff
         )
     ).all()
-    swept = sum(fail_if_pending(db, reading_id) for reading_id in ids)
+    # The fail re-checks status, staleness and attempt in one conditional UPDATE, so
+    # a reading written (or retried) between this select and the fail is left alone.
+    swept = sum(
+        fail_if_pending(
+            db, row.id, attempt=(row.token_usage or {}).get("retries", 0), stale_before=cutoff
+        )
+        for row in rows
+    )
     if swept:
         logger.warning("user %s: failed and refunded %d stale pending reading(s)", user_id, swept)
     return swept
@@ -140,6 +148,7 @@ def run_generation(
     if model is None:
         model = settings.model_daily if reading.spread_type == "daily" else settings.model_paid
     deadline = _clock() + GENERATION_DEADLINE_SECONDS
+    attempt = _retries(reading)
     buffer = ""
     delivered = 0
     stream = None
@@ -175,7 +184,7 @@ def run_generation(
         # Client disconnected; a generator must not yield after GeneratorExit.
         if delivered == 0:
             _close(stream)
-            _fail_and_refund(db, reading, buffer)
+            _fail_and_refund(db, reading, buffer, attempt=attempt)
             return
         try:
             while True:
@@ -190,13 +199,13 @@ def run_generation(
         except Exception:
             logger.warning("reading %s: drain after disconnect failed; refunding", reading.id)
             _close(stream)
-            _fail_and_refund(db, reading, buffer)
+            _fail_and_refund(db, reading, buffer, attempt=attempt)
         return
     except Exception:
         # GenerationError and anything unexpected: never keep credits for an
         # undelivered reading.
         _close(stream)
-        _fail_and_refund(db, reading, buffer)
+        _fail_and_refund(db, reading, buffer, attempt=attempt)
         raise
 
 
@@ -222,41 +231,78 @@ def _close(stream) -> None:
         stream.close()
 
 
-def _fail_and_refund(db: Session, reading: Reading, partial_text: str = "") -> None:
+def _fail_and_refund(
+    db: Session,
+    reading: Reading | None,
+    partial_text: str = "",
+    *,
+    reading_id: UUID | None = None,
+    attempt: int | None = None,
+    stale_before: datetime | None = None,
+) -> bool:
+    """Mark the reading failed and refund its current attempt's debit; return whether it did.
+
+    The pending -> failed transition is one conditional UPDATE (still pending, and,
+    when given, still on `attempt` and not written since `stale_before`); the refund
+    is issued only if that UPDATE matched, so a racing completion, retry or write
+    wins and nothing is refunded.
+    """
+    reading_id = reading.id if reading is not None else reading_id
     db.rollback()  # the session may be mid-transaction
-    if reading.status == "complete":
-        return  # never refund a delivered reading
-    reading.status = "failed"
-    if len(partial_text) > len(reading.text or ""):
-        reading.text = partial_text
-    # Refund exactly what this attempt's debit took (prices may have changed since);
-    # an attempt with no debit (free spread, daily) refunds nothing.
-    debit_reference = _debit_reference(reading.id, _retries(reading))
-    amount = debit_amount(db, debit_reference)
-    if amount:
-        refund_reading(
-            db, reading.user_id, amount, reading.id, reference_id=f"{debit_reference}:refund"
+    conditions = [Reading.id == reading_id, Reading.status == "pending"]
+    if attempt is not None:
+        conditions.append(func.coalesce(Reading.token_usage["retries"].as_integer(), 0) == attempt)
+    if stale_before is not None:
+        conditions.append(Reading.updated_at < stale_before)
+    values = {"status": "failed"}
+    if partial_text:
+        values["text"] = case(
+            (func.length(func.coalesce(Reading.text, "")) < len(partial_text), partial_text),
+            else_=Reading.text,
         )
+    failed = db.execute(
+        update(Reading)
+        .where(*conditions)
+        .values(**values)
+        .returning(Reading.user_id, Reading.token_usage)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if failed is not None:
+        # Refund exactly what this attempt's debit took (prices may have changed since);
+        # an attempt with no debit (free spread, daily) refunds nothing.
+        debit_reference = _debit_reference(reading_id, (failed.token_usage or {}).get("retries", 0))
+        amount = debit_amount(db, debit_reference)
+        if amount:
+            refund_reading(
+                db, failed.user_id, amount, reading_id, reference_id=f"{debit_reference}:refund"
+            )
     db.commit()
+    if reading is not None:
+        db.refresh(reading)
+    elif failed is not None:
+        # The UPDATE bypassed the identity map; refresh any loaded copy of the row.
+        db.get(Reading, reading_id, populate_existing=True)
+    return failed is not None
 
 
-def fail_if_pending(db: Session, reading_id: UUID, attempt: int | None = None) -> bool:
+def fail_if_pending(
+    db: Session,
+    reading_id: UUID,
+    attempt: int | None = None,
+    stale_before: datetime | None = None,
+) -> bool:
     """Fail and refund the reading if it is still pending; return whether it did.
 
     A safety net for streams that end before `run_generation` started (its own
-    failure handling only exists once the generator is running). Rolls back first
-    and re-reads the row, so it is safe after an aborted transaction. When `attempt`
-    (the retry count the caller started) is given, a reading that has since moved
-    on to a later attempt is left alone.
+    failure handling only exists once the generator is running), and the fail step
+    of stale sweeps. Rolls back first, so it is safe after an aborted transaction.
+    When `attempt` (the retry count the caller started or observed) is given, a
+    reading that has since moved on to a later attempt is left alone; when
+    `stale_before` is given, one written since then is left alone.
     """
-    db.rollback()
-    reading = db.get(Reading, reading_id, populate_existing=True)
-    if reading is None or reading.status != "pending":
-        return False
-    if attempt is not None and _retries(reading) != attempt:
-        return False
-    _fail_and_refund(db, reading)
-    return True
+    return _fail_and_refund(
+        db, None, reading_id=reading_id, attempt=attempt, stale_before=stale_before
+    )
 
 
 def retry_reading(db: Session, user: User, reading_id: UUID) -> Reading:
