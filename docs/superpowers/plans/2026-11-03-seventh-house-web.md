@@ -32,7 +32,7 @@
 1. **SSE frames split across network chunks** (a `data:` line arriving in two reads, or two events in one read) — the parser must reassemble by the blank-line delimiter, never by read boundary. Test in Task 2.
 2. **Token expiry or deletion mid-session** — any 401 must silently mint a new anonymous session and retry once; the user must never see a dead screen. Test in Task 3.
 3. **Pressing Back or closing the tab mid-stream** — the client aborts the fetch; the UI must not show the reading as complete, and the journal must show whatever the server persisted (complete, per the API's drain policy). Test in Task 8.
-4. **Daily card across midnight and across a timezone change** — the Today page must re-request when the local date changes and must handle 409 by polling `GET /readings/{id}` until complete. Test in Task 5.
+4. **Daily card across midnight and across a timezone change** — the Today page must re-request when the local date changes and must handle 409 by polling `GET /readings?limit=1` until today's daily is complete (the 409 body carries no id). Test in Task 5.
 5. **Purchase completes but the webhook is slow** — after `purchase()` resolves, poll `/me` every 2 s for up to 30 s showing "Processing…", then show the new balance or a "still processing" note; never show an error for a successful charge. Test in Task 10.
 
 ---
@@ -242,7 +242,7 @@ test("falls back to a text face when the image errors", () => { /* fireEvent.err
 - Create: `web/src/lib/tz.ts`, `web/src/hooks/use-daily.ts`, `web/src/components/reading-stream.tsx`, `web/src/app/page.tsx`, `web/tests/today.test.tsx`
 
 **Interfaces:**
-- Produces: `localTimeZone(): string`. `<ReadingStream source={() => Promise<ReadableStream>} onCards onDone onError />` — generic consumer rendering streamed text progressively (paragraphs split on blank lines), a blinking caret while streaming, an inline error with a Retry button on `error`; exposes the `AbortController` so unmount aborts the fetch. `useDaily()` — on mount calls `api.daily(tz)`: `kind:"reading"` → show it; `kind:"stream"` → `<ReadingStream>`; 409 `generation_in_progress` → poll `GET /readings/{id}`… (the 409 body has no id; instead poll `GET /readings?limit=1` for today's daily every 2 s up to 60 s, then show "Still preparing your card…" with a Retry). Caches the last complete daily reading in `localStorage` key `sh.lastDaily` (`{localDate, reading}`) so the page renders instantly offline; re-requests when `localDate !== today`.
+- Produces: `localTimeZone(): string`. `<ReadingStream source={() => Promise<ReadableStream>} onCards onDone onError />` — generic consumer rendering streamed text progressively (paragraphs split on blank lines), a blinking caret while streaming, an inline error with a Retry button on `error`; exposes the `AbortController` so unmount aborts the fetch. `useDaily()` — on mount calls `api.daily(tz)`: `kind:"reading"` → show it; `kind:"stream"` → `<ReadingStream>`; 409 `generation_in_progress` → poll `GET /readings?limit=1` every 2 s up to 60 s until a `daily` reading with `status === "complete"` appears, then show it; after 60 s show "Still preparing your card…" with a Retry. Caches the last complete daily reading in `localStorage` key `sh.lastDaily` (`{localDate, reading}`) so the page renders instantly offline; re-requests when `localDate !== today`.
 - Today page: hero `<Card>` face-down; tap/click or Enter flips it, which triggers the daily request; text streams below; a "Deeper reading" CTA links to `/reading/new/`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -426,7 +426,7 @@ test("magic landing verifies with the current bearer and stores the new token", 
   render at /auth/magic/?token=m1 → expect localStorage sh.token === "t9" and redirect to /account/
 });
 test("magic landing without token shows expired copy", async () => { /* ... */ });
-test("requesting a magic link always shows check-your-email", async () => { /* 202 and also 429 → same copy? no: 429 shows wait message */ });
+test("requesting a magic link shows check-your-email on 202 and a wait message on 429", async () => { /* two cases */ });
 test("delete account requires typing DELETE and then re-bootstraps anonymously", async () => { /* ... */ });
 test("google credential is posted and /me refreshed", async () => { /* stub window.google */ });
 ```
