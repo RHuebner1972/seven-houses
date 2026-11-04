@@ -301,3 +301,44 @@ def test_cancel_at_next_await_still_closes_generator(
     assert row.status == "complete" and row.text == "abc"
     assert balance(db, user.id) == 0
     assert held[0].gi_frame is None  # closed, not merely abandoned
+
+
+def test_fail_if_pending_runs_even_if_aclose_raises(db, user_with_credits, fake_anthropic):
+    """The response-level safety net must not depend on closing the body iterator
+    succeeding: a raising aclose() still leaves the reading failed and refunded."""
+    import anyio
+
+    from app.readings.router import _stream
+    from app.readings.service import start_reading
+
+    user = user_with_credits(1)
+    fake_anthropic.chunks = ["a"]
+    reading = start_reading(db, user, "three_card", None, None)
+    response = _stream(db, reading, 1)
+    inner = response.body_iterator
+
+    class RaisingClose:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return await inner.__anext__()
+
+        async def aclose(self):
+            raise RuntimeError("aclose failed")
+
+    response.body_iterator = RaisingClose()
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            raise OSError("client went away")  # disconnect on the first body chunk
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    scope = {"type": "http", "asgi": {"spec_version": "2.4"}}
+    with pytest.raises(RuntimeError, match="aclose failed"):
+        anyio.run(response, scope, receive, send)
+    db.expire_all()
+    assert db.get(Reading, reading.id).status == "failed"
+    assert balance(db, user.id) == 1

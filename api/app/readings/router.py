@@ -78,9 +78,10 @@ class _SSEResponse(StreamingResponse):
       `yield`; closing it lets `run_generation` drain-and-complete or fail and
       refund promptly.
     - `__call__` runs `fail_if_pending` once the response is over, however it
-      ended. This covers streams cut off before `run_generation` started (e.g.
-      during the `cards` send, or before the body began), where closing an
-      unstarted generator runs no handler.
+      ended, even if `aclose()` itself raised (`stream_response` does the same).
+      This covers streams cut off before `run_generation` started (e.g. during
+      the `cards` send, or before the body began), where closing an unstarted
+      generator runs no handler.
     """
 
     def __init__(self, content, *, db: Session, reading_id: uuid.UUID, attempt: int, **kwargs):
@@ -94,20 +95,27 @@ class _SSEResponse(StreamingResponse):
             await super().stream_response(send)
         finally:
             with anyio.CancelScope(shield=True):
-                await self.body_iterator.aclose()
+                try:
+                    await self.body_iterator.aclose()
+                finally:
+                    await self._fail_if_pending()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         try:
             await super().__call__(scope, receive, send)
         finally:
             with anyio.CancelScope(shield=True):
-                await self.body_iterator.aclose()
-                if await anyio.to_thread.run_sync(
-                    fail_if_pending, self._db, self._reading_id, self._attempt
-                ):
-                    logger.warning(
-                        "reading %s: stream ended before generation; refunded", self._reading_id
-                    )
+                try:
+                    await self.body_iterator.aclose()
+                finally:
+                    await self._fail_if_pending()
+
+    async def _fail_if_pending(self) -> None:
+        # Idempotent: a no-op once the reading is complete or failed.
+        if await anyio.to_thread.run_sync(
+            fail_if_pending, self._db, self._reading_id, self._attempt
+        ):
+            logger.warning("reading %s: stream ended before generation; refunded", self._reading_id)
 
 
 def _stream(
