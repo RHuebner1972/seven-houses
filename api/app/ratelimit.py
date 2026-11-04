@@ -1,6 +1,8 @@
 """DB-backed rate limits (serverless-safe: no in-process state).
 
-Per-user limits count recent `readings` rows; per-IP limits record `ip_events`.
+Per-user limits count recent `generation_events` rows (one per started Claude
+generation or geocode call, recorded by `record_generation`); per-IP limits record
+`ip_events`.
 """
 
 import uuid
@@ -11,11 +13,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import RateLimited
-from app.models import IpEvent, Reading
+from app.models import GenerationEvent, IpEvent
 
 HOUR = timedelta(hours=1)
 READING_LIMIT = 20
 DAILY_LIMIT = 10
+GEOCODE_LIMIT = 60
 ANON_MINT_LIMIT = 10
 MAGIC_REQUEST_LIMIT = 5
 
@@ -30,24 +33,30 @@ def client_ip(request: Request) -> str:
 def check_user_rate(
     db: Session, user_id: uuid.UUID, kind: str, limit: int, window: timedelta
 ) -> None:
-    """Raise RateLimited once the user already has `limit` readings of `kind` in the window.
+    """Raise RateLimited once the user already has `limit` generation events of `kind`
+    in the window.
 
-    kind="reading": paid spreads; kind="daily": daily-card readings.
+    kind="reading": paid spread generations (new and retry); kind="daily": daily-card
+    generations (including regenerations); kind="geocode": place lookups.
     """
-    if kind == "reading":
-        kind_filter = Reading.spread_type != "daily"
-    elif kind == "daily":
-        kind_filter = Reading.spread_type == "daily"
-    else:
-        raise ValueError(f"unknown user rate kind: {kind}")
     since = datetime.now(UTC) - window
     count = db.scalar(
         select(func.count())
-        .select_from(Reading)
-        .where(Reading.user_id == user_id, kind_filter, Reading.created_at > since)
+        .select_from(GenerationEvent)
+        .where(
+            GenerationEvent.user_id == user_id,
+            GenerationEvent.kind == kind,
+            GenerationEvent.created_at > since,
+        )
     )
     if count >= limit:
         raise RateLimited(_MESSAGE)
+
+
+def record_generation(db: Session, user_id: uuid.UUID, kind: str) -> None:
+    """Record one generation event of `kind` for the user and commit."""
+    db.add(GenerationEvent(user_id=user_id, kind=kind))
+    db.commit()
 
 
 def check_ip_rate(db: Session, ip: str, kind: str, limit: int, window: timedelta) -> None:

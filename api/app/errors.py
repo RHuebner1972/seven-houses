@@ -26,6 +26,11 @@ class InsufficientCredits(AppError):
         super().__init__(402, "insufficient_credits", message)
 
 
+class Conflict(AppError):
+    def __init__(self, code: str, message: str):
+        super().__init__(409, code, message)
+
+
 class RateLimited(AppError):
     def __init__(self, message: str):
         super().__init__(429, "rate_limited", message)

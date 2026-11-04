@@ -8,6 +8,7 @@ idempotent.
 """
 
 from collections.abc import Iterator
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,6 +25,9 @@ from app.tarot.draw import DrawnCard, draw
 from app.tarot.spreads import SPREADS
 
 PERSIST_EVERY_CHUNKS = 20
+# A pending reading not written for this long has no live stream behind it (the
+# generation deadline is well inside it); it may be failed and refunded.
+STALE_PENDING = timedelta(minutes=6)
 
 
 def _cost(db: Session, spread_type: str) -> int:
@@ -194,6 +198,8 @@ def retry_reading(db: Session, user: User, reading_id: UUID) -> Reading:
     )
     if reading is None:
         raise NotFound("Reading not found")
+    if reading.spread_type == "daily":
+        raise ValidationFailed("daily readings cannot be retried; request the daily card again")
     if reading.status != "failed":
         raise ValidationFailed(f"reading is {reading.status}; only failed readings can be retried")
 

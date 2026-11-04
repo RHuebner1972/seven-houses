@@ -26,7 +26,7 @@ from app.auth.deps import current_user
 from app.db import get_db
 from app.errors import NotFound
 from app.models import Reading, SpreadPrice, User
-from app.ratelimit import HOUR, READING_LIMIT, check_user_rate
+from app.ratelimit import HOUR, READING_LIMIT, check_user_rate, record_generation
 from app.readings.generator import GenerationError
 from app.readings.service import (
     current_attempt,
@@ -111,6 +111,10 @@ class _SSEResponse(StreamingResponse):
 def _stream(
     db: Session, reading: Reading, cost: int, max_tokens: int = 2000
 ) -> _SSEResponse:
+    # Counted when the stream is set up, before run_generation can call Claude, so
+    # every attempt counts toward the rate limit, even one abandoned at once.
+    record_generation(db, reading.user_id, "daily" if reading.spread_type == "daily" else "reading")
+
     async def event_stream() -> AsyncIterator[str]:
         gen = run_generation(db, reading, max_tokens=max_tokens)
         try:

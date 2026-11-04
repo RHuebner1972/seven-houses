@@ -49,40 +49,86 @@ def test_reading_rate_limited(client, db, user_with_credits, fake_anthropic):
     assert r.status_code == 429 and r.json()["error"]["code"] == "rate_limited"
 
 
+def _events(db, user, kind, n, minutes_ago=0):
+    from datetime import UTC, datetime
+
+    from app.models import GenerationEvent
+
+    at = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    for _ in range(n):
+        db.add(GenerationEvent(user_id=user.id, kind=kind, created_at=at))
+    db.commit()
+
+
+def _post_and_disconnect(client, url, user, json=None):
+    with client.stream("POST", url, json=json, headers=auth_headers(user)) as r:
+        assert r.status_code == 200
+
+
 def test_retry_rate_limited(client, db, user_with_credits, fake_anthropic):
+    """Every paid stream (new or retry) records a generation event, even one the
+    client abandoned before any text: disconnect-and-retry cannot dodge the limit."""
     user = user_with_credits(30)
-    fake_anthropic.chunks = ["x"]
-    client.post("/readings", json={"spread_type": "three_card"}, headers=auth_headers(user))
+    fake_anthropic.chunks = ["x"] * 50
+    _events(db, user, "reading", 18)
+    _post_and_disconnect(client, "/readings", user, {"spread_type": "three_card"})  # 19
+    db.expire_all()
     reading = db.query(Reading).one()
-    for _ in range(19):
-        db.add(Reading(user_id=user.id, spread_type="three_card", cards=[], status="complete"))
-    db.commit()
+    assert reading.status == "failed"
+    _post_and_disconnect(client, f"/readings/{reading.id}/retry", user)  # 20
+    db.expire_all()
+    assert db.get(Reading, reading.id).status == "failed"
     r = client.post(f"/readings/{reading.id}/retry", headers=auth_headers(user))
-    assert r.status_code == 429
-
-
-def test_daily_rate_limited(client, db, user, fake_anthropic):
-    for _ in range(10):
-        db.add(Reading(user_id=user.id, spread_type="daily", cards=[], status="complete"))
-    db.commit()
-    r = client.post("/daily", json={"tz": "UTC"}, headers=auth_headers(user))
     assert r.status_code == 429 and r.json()["error"]["code"] == "rate_limited"
 
 
-def test_user_rate_ignores_old_and_other_users(db, user, other_user):
-    from datetime import UTC, datetime
+def test_daily_rate_limited(client, db, user, fake_anthropic):
+    """Ten failed daily generations (each a regeneration of the same reading) use
+    up the hour's daily budget; the 11th attempt is refused before Claude is called."""
+    import anthropic
+    import httpx
 
-    old = datetime.now(UTC) - timedelta(hours=2)
-    for _ in range(3):
-        db.add(Reading(user_id=user.id, spread_type="three_card", cards=[], status="complete", created_at=old))
-        db.add(Reading(user_id=other_user.id, spread_type="three_card", cards=[], status="complete"))
-    db.commit()
+    fake_anthropic.raise_on_stream = anthropic.APIConnectionError(
+        request=httpx.Request("POST", "https://api.anthropic.com")
+    )
+    for _ in range(10):
+        with client.stream("POST", "/daily", json={"tz": "UTC"}, headers=auth_headers(user)) as r:
+            assert r.status_code == 200
+            list(r.iter_lines())
+    assert db.query(Reading).count() == 1
+    fake_anthropic.last_kwargs = None
+    r = client.post("/daily", json={"tz": "UTC"}, headers=auth_headers(user))
+    assert r.status_code == 429 and r.json()["error"]["code"] == "rate_limited"
+    assert fake_anthropic.last_kwargs is None
+
+
+def test_completed_daily_still_returned_when_rate_limited(client, db, user, fake_anthropic):
+    fake_anthropic.chunks = ["Once"]
+    with client.stream("POST", "/daily", json={"tz": "UTC"}, headers=auth_headers(user)) as r:
+        list(r.iter_lines())
+    _events(db, user, "daily", 10)
+    r = client.post("/daily", json={"tz": "UTC"}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["reading"]["text"] == "Once"
+
+
+def test_user_rate_ignores_old_and_other_users(db, user, other_user):
+    _events(db, user, "reading", 3, minutes_ago=120)
+    _events(db, other_user, "reading", 3)
     check_user_rate(db, user.id, "reading", 1, HOUR)  # old + other's rows don't count
-    db.add(Reading(user_id=user.id, spread_type="three_card", cards=[], status="complete"))
-    db.commit()
+    _events(db, user, "reading", 1)
     with pytest.raises(RateLimited):
         check_user_rate(db, user.id, "reading", 1, HOUR)
     check_user_rate(db, user.id, "daily", 1, HOUR)  # daily counted separately
+
+
+def test_record_generation_inserts_event(db, user):
+    from app.models import GenerationEvent
+    from app.ratelimit import record_generation
+
+    record_generation(db, user.id, "daily")
+    db.expire_all()
+    row = db.query(GenerationEvent).one()
+    assert (row.user_id, row.kind) == (user.id, "daily") and row.created_at is not None
 
 
 def test_ip_rate_records_attempt_before_raising(db):
