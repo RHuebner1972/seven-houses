@@ -8,6 +8,7 @@ from app.auth.deps import current_user
 from app.daily.service import get_or_create_daily
 from app.db import get_db
 from app.models import User
+from app.ratelimit import DAILY_LIMIT, HOUR, check_user_rate
 from app.readings.router import _stream, reading_payload
 
 router = APIRouter()
@@ -25,6 +26,7 @@ def daily(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    check_user_rate(db, user.id, "daily", DAILY_LIMIT, HOUR)
     reading, already_drawn = get_or_create_daily(db, user, body.tz)
     if already_drawn and reading.status == "complete":
         return {"reading": reading_payload(reading)}

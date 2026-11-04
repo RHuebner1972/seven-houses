@@ -26,6 +26,7 @@ from app.auth.deps import current_user
 from app.db import get_db
 from app.errors import NotFound
 from app.models import Reading, SpreadPrice, User
+from app.ratelimit import HOUR, READING_LIMIT, check_user_rate
 from app.readings.generator import GenerationError
 from app.readings.service import (
     current_attempt,
@@ -172,6 +173,7 @@ def create_reading(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    check_user_rate(db, user.id, "reading", READING_LIMIT, HOUR)
     reading = start_reading(db, user, body.spread_type, body.question, body.profile_id)
     return _stream(db, reading, _cost(db, reading.spread_type))
 
@@ -182,6 +184,7 @@ def retry(
     user: Annotated[User, Depends(current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    check_user_rate(db, user.id, "reading", READING_LIMIT, HOUR)
     reading = retry_reading(db, user, reading_id)
     return _stream(db, reading, _cost(db, reading.spread_type))
 
