@@ -260,3 +260,46 @@ test("503 geocode_unavailable shows an inline message", async () => {
   await user.type(screen.getByRole("combobox", { name: "Birth place" }), "Hull");
   expect(await screen.findByText("Place lookup is temporarily unavailable")).toBeInTheDocument();
 });
+
+test("backspacing below 2 characters hides the stale list", async () => {
+  server.use(geo());
+  const user = setup();
+  const input = screen.getByRole("combobox", { name: "Birth place" });
+  await user.type(input, "Hull");
+  await screen.findByRole("option", { name: HULL.label });
+  await user.keyboard("{Backspace}{Backspace}{Backspace}");
+  expect(input).toHaveValue("H");
+  expect(screen.queryByRole("option")).toBeNull();
+  expect(input).toHaveAttribute("aria-expanded", "false");
+});
+
+test("blur closes the list", async () => {
+  server.use(geo());
+  const user = setup();
+  const input = screen.getByRole("combobox", { name: "Birth place" });
+  await user.type(input, "Hull");
+  await screen.findByRole("option", { name: HULL.label });
+  await user.tab();
+  expect(screen.queryByRole("option")).toBeNull();
+});
+
+test("date input has min and a max of today's local date after mount", () => {
+  server.use(geo());
+  setup();
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const el = screen.getByLabelText("Birth date");
+  expect(el).toHaveAttribute("min", "1850-01-01");
+  expect(el).toHaveAttribute("max", `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);
+});
+
+test("submit stays disabled after success so a second click cannot duplicate", async () => {
+  server.use(geo(), createOk());
+  const user = setup();
+  await fillBasics(user);
+  await pickHull(user);
+  await user.click(submitBtn());
+  await waitFor(() => expect(push).toHaveBeenCalled());
+  expect(submitBtn()).toBeDisabled();
+  expect(posts).toHaveLength(1);
+});

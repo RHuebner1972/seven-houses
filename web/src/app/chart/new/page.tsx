@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { GeocodeSearch } from "@/components/geocode-search";
 import { useCreateProfile } from "@/hooks/use-profiles";
 import { ApiError } from "@/lib/errors";
@@ -16,7 +16,15 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+const noopSubscribe = () => () => {};
+
+/** Today's date in the browser; undefined during prerender so a build-time value is never frozen into the HTML. */
+function useToday(): string | undefined {
+  return useSyncExternalStore(noopSubscribe, todayLocal, () => undefined);
+}
+
 export default function NewChartPage() {
+  const today = useToday();
   const router = useRouter();
   const create = useCreateProfile();
   const [name, setName] = useState("");
@@ -86,7 +94,7 @@ export default function NewChartPage() {
             type="date"
             required
             min="1850-01-01"
-            max={todayLocal()}
+            max={today}
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className={field}
@@ -123,7 +131,7 @@ export default function NewChartPage() {
 
         <button
           type="submit"
-          disabled={!ready || create.isPending}
+          disabled={!ready || create.isPending || create.isSuccess}
           className="rounded-full border border-gold px-6 py-2.5 text-gold-hi hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {create.isPending ? "Casting your chart…" : "Cast my chart"}

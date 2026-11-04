@@ -107,9 +107,18 @@ export function GeocodeSearch({
           setText(e.target.value);
           setQuery(e.target.value);
           setMessage(null);
+          if (e.target.value.trim().length < 2) {
+            setResults([]);
+            setOpen(false);
+            setActive(-1);
+          }
           onClear?.();
         }}
         onKeyDown={onKeyDown}
+        onBlur={() => {
+          setOpen(false);
+          setActive(-1);
+        }}
         className="mt-1 w-full rounded-md border border-gold/40 bg-bg px-3 py-2 text-ink focus:border-gold focus:outline-none"
       />
       <ul
