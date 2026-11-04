@@ -107,9 +107,11 @@ class _SSEResponse(StreamingResponse):
                     )
 
 
-def _stream(db: Session, reading: Reading, cost: int) -> _SSEResponse:
+def _stream(
+    db: Session, reading: Reading, cost: int, max_tokens: int = 2000
+) -> _SSEResponse:
     async def event_stream() -> AsyncIterator[str]:
-        gen = run_generation(db, reading)
+        gen = run_generation(db, reading, max_tokens=max_tokens)
         try:
             yield _sse(
                 "cards", {"reading_id": str(reading.id), "cost": cost, "cards": reading.cards}
@@ -210,13 +212,7 @@ def list_readings(
     ]
 
 
-@router.get("/readings/{reading_id}")
-def get_reading(
-    reading_id: uuid.UUID,
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    r = _owned_reading(db, user, reading_id)
+def reading_payload(r: Reading) -> dict:
     return {
         "id": str(r.id),
         "spread_type": r.spread_type,
@@ -227,6 +223,15 @@ def get_reading(
         "status": r.status,
         "created_at": r.created_at.isoformat(),
     }
+
+
+@router.get("/readings/{reading_id}")
+def get_reading(
+    reading_id: uuid.UUID,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return reading_payload(_owned_reading(db, user, reading_id))
 
 
 @router.get("/spreads")
