@@ -202,3 +202,62 @@ class _Writer(str):
         return True
 
     __hash__ = str.__hash__
+
+
+class FakeAnthropic:
+    def __init__(self):
+        self.chunks: list[str] = []
+        self.usage: tuple[int, int] = (0, 0)
+        self.raise_on_stream: Exception | None = None
+        self.raise_after_chunks: int | None = None
+        self.error: Exception | None = None
+        self.last_kwargs: dict | None = None
+
+    @property
+    def last_messages(self):
+        return self.last_kwargs["messages"] if self.last_kwargs else None
+
+
+@pytest.fixture
+def fake_anthropic(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.readings import generator
+
+    fake = FakeAnthropic()
+
+    class _Stream:
+        def __enter__(self):
+            if fake.raise_on_stream is not None:
+                raise fake.raise_on_stream
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @property
+        def text_stream(self):
+            for i, chunk in enumerate(fake.chunks):
+                if fake.raise_after_chunks is not None and i >= fake.raise_after_chunks:
+                    raise fake.error
+                yield chunk
+            if fake.raise_after_chunks is not None and fake.raise_after_chunks >= len(fake.chunks):
+                raise fake.error
+
+        def get_final_message(self):
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=fake.usage[0], output_tokens=fake.usage[1])
+            )
+
+    class _Messages:
+        def stream(self, **kwargs):
+            fake.last_kwargs = kwargs
+            return _Stream()
+
+    class _Client:
+        def __init__(self, **kwargs):
+            self.client_kwargs = kwargs
+            self.messages = _Messages()
+
+    monkeypatch.setattr(generator.anthropic, "Anthropic", _Client)
+    return fake
