@@ -18,6 +18,7 @@ import {
 import { createApi, type Api } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import { decodeUserId, localStorageTokenStore, type TokenStore } from "@/lib/auth";
+import { ToastProvider } from "@/components/toast";
 
 export interface AuthValue {
   token: string | null;
@@ -186,7 +187,9 @@ export function Providers({
   return (
     <QueryClientProvider client={client}>
       <AuthProvider>
-        <BillingProvider>{children}</BillingProvider>
+        <BillingProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </BillingProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -70,6 +70,9 @@ export interface SpreadPosition {
   meaning: string;
 }
 
+/** A slot in a spread, as returned by `GET /spreads`. */
+export type Position = SpreadPosition;
+
 export interface Spread {
   type: string;
   name: string;
