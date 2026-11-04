@@ -94,13 +94,53 @@ def test_magic_request_requires_auth(client, fake_resend):
 def test_magic_verify_links_and_is_single_use(client, db, user, fake_resend):
     client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
     token = fake_resend.extract_token()
-    r = client.post("/auth/magic/verify", json={"token": token})
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
     assert r.status_code == 200
     assert r.json()["user_id"] == str(user.id)
     assert verify_token(r.json()["token"]).anon is False
     db.refresh(user)
     assert (user.email, user.auth_provider, user.auth_subject) == ("a@x.io", "email", None)
     assert client.post("/auth/magic/verify", json={"token": token}).status_code == 401
+
+
+def test_magic_verify_without_bearer_creates_new_user_not_requester(client, db, user, fake_resend):
+    """Pre-signup takeover guard: someone who obtains the link but not the
+    requesting device's token must not be linked into the requester's account."""
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    r = client.post("/auth/magic/verify", json={"token": fake_resend.extract_token()})
+    assert r.status_code == 200
+    new_id = r.json()["user_id"]
+    assert new_id != str(user.id)
+    new = db.get(User, verify_token(r.json()["token"]).user_id)
+    assert (new.email, new.auth_provider, new.auth_subject) == ("a@x.io", "email", None)
+    db.refresh(user)
+    assert user.email is None
+    me = client.get("/me", headers=auth_headers(user)).json()
+    assert me["user_id"] == str(user.id) and me["anon"] is True and me["email"] is None
+
+
+def test_magic_verify_with_other_users_bearer_is_401_and_unspent(
+    client, db, user, other_user, fake_resend
+):
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    token = fake_resend.extract_token()
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(other_user))
+    assert r.status_code == 401
+    db.refresh(other_user)
+    db.refresh(user)
+    assert other_user.email is None and user.email is None
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(user.id)
+
+
+def test_magic_verify_with_invalid_bearer_is_401(client, user, fake_resend):
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    r = client.post(
+        "/auth/magic/verify",
+        json={"token": fake_resend.extract_token()},
+        headers={"Authorization": "Bearer nope"},
+    )
+    assert r.status_code == 401
 
 
 def test_magic_verify_unknown_token(client):
@@ -174,7 +214,9 @@ def test_linked_user_not_overwritten_by_other_identity(client, db, fake_resend):
     db.add(g)
     db.commit()
     client.post("/auth/magic/request", json={"email": "other@x.io"}, headers=auth_headers(g))
-    r = client.post("/auth/magic/verify", json={"token": fake_resend.extract_token()})
+    r = client.post(
+        "/auth/magic/verify", json={"token": fake_resend.extract_token()}, headers=auth_headers(g)
+    )
     assert r.status_code == 422
     db.refresh(g)
     assert (g.email, g.auth_provider, g.auth_subject) == ("g@x.io", "google", "g9")

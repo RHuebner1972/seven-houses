@@ -5,7 +5,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.networks import EmailStr
 from sqlalchemy.orm import Session
 
-from app.auth.deps import current_user
+from app.auth.deps import current_user, optional_current_user
 from app.auth.google import verify_google_id_token
 from app.auth.jwt import mint_token
 from app.auth.linking import link_and_commit
@@ -94,8 +94,14 @@ def magic_request(
 
 
 @router.post("/auth/magic/verify")
-def magic_verify(body: MagicVerifyBody, db: Annotated[Session, Depends(get_db)]):
-    return _signed_in(consume_magic_token(db, body.token))
+def magic_verify(
+    body: MagicVerifyBody,
+    db: Annotated[Session, Depends(get_db)],
+    requester: Annotated[User | None, Depends(optional_current_user)],
+):
+    """Send the requesting device's bearer to link that (anonymous) user; without one
+    the link signs in as the email's owner, or a new user for that email."""
+    return _signed_in(consume_magic_token(db, body.token, requester))
 
 
 @router.delete("/account", status_code=204)
