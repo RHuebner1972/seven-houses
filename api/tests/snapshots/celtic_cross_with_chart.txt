@@ -28,15 +28,15 @@ Natal chart:
 Sun: 24.4° Taurus, house 11
 Moon: 27.8° Capricorn, house 7
 Mercury: 8.0° Taurus, house 11 (retrograde)
-Venus: 12.9° Aries, house 10
-Mars: 18.4° Pisces, house 9
-Jupiter: 9.6° Cancer, house 1
+Venus: 12.8° Aries, house 10
+Mars: 18.3° Pisces, house 9
+Jupiter: 9.5° Cancer, house 1
 Saturn: 25.2° Capricorn, house 7 (retrograde)
-Uranus: 9.2° Capricorn, house 7 (retrograde)
-Neptune: 14.4° Capricorn, house 7 (retrograde)
-Pluto: 16.2° Scorpio, house 5 (retrograde)
+Uranus: 9.1° Capricorn, house 7 (retrograde)
+Neptune: 14.3° Capricorn, house 7 (retrograde)
+Pluto: 16.1° Scorpio, house 5 (retrograde)
 North Node: 11.3° Aquarius, house 8
-Ascendant: 20.6° Cancer, house 1
+Ascendant: 20.5° Cancer, house 1
 MC: 0.9° Aries, house 10
 Aspects:
 Sun trine Moon (orb 3.4°)
@@ -60,4 +60,7 @@ How to weave the chart into the reading:
 - Relate the Present and self-focused positions to the Sun and the Ascendant.
 - Relate the Hopes and Fears position to the Moon and the 12th house.
 - Relate the Outcome position to the ruler of the Ascendant sign.
+Use traditional rulers: Aries-Mars, Taurus-Venus, Gemini-Mercury, Cancer-Moon, Leo-Sun, Virgo-Mercury, Libra-Venus, Scorpio-Mars, Sagittarius-Jupiter, Capricorn-Saturn, Aquarius-Saturn, Pisces-Jupiter; read that planet's sign and house from the chart.
+If the Ascendant or houses are unavailable, relate Present to the Sun only and Hopes and Fears to the Moon only, and skip the Outcome link.
+Apply these only to positions that exist in this spread; for other positions or a single daily card, draw on the Sun, Moon, or Ascendant as fits.
 Mention only the 2 to 4 placements that illuminate the cards, by name, and keep the tone reflective rather than predictive.

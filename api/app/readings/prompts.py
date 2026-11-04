@@ -1,3 +1,5 @@
+import math
+
 from app.astro.chart import ChartData, Placement
 from app.astro.ephemeris import BODIES
 from app.tarot.cards import CARD_BY_ID
@@ -30,6 +32,9 @@ WEAVING_GUIDANCE = """How to weave the chart into the reading:
 - Relate the Present and self-focused positions to the Sun and the Ascendant.
 - Relate the Hopes and Fears position to the Moon and the 12th house.
 - Relate the Outcome position to the ruler of the Ascendant sign.
+Use traditional rulers: Aries-Mars, Taurus-Venus, Gemini-Mercury, Cancer-Moon, Leo-Sun, Virgo-Mercury, Libra-Venus, Scorpio-Mars, Sagittarius-Jupiter, Capricorn-Saturn, Aquarius-Saturn, Pisces-Jupiter; read that planet's sign and house from the chart.
+If the Ascendant or houses are unavailable, relate Present to the Sun only and Hopes and Fears to the Moon only, and skip the Outcome link.
+Apply these only to positions that exist in this spread; for other positions or a single daily card, draw on the Sun, Moon, or Ascendant as fits.
 Mention only the 2 to 4 placements that illuminate the cards, by name, and keep the tone reflective rather than predictive."""
 
 UNKNOWN_TIME_NOTE = (
@@ -42,7 +47,7 @@ def _label(key: str) -> str:
 
 
 def _placement_line(label: str, p: Placement) -> str:
-    line = f"{label}: {p.degree:.1f}° {p.sign}"
+    line = f"{label}: {math.floor(p.degree * 10) / 10:.1f}° {p.sign}"
     if p.house is not None:
         line += f", house {p.house}"
     if p.retrograde:
@@ -91,7 +96,7 @@ def build_messages(
     blocks = ["\n".join(spread_lines), "\n".join(drawn_lines)]
 
     q = (question or "").strip()[:QUESTION_MAX_CHARS]
-    q = q.replace("</question>", "").replace("<question>", "").strip()
+    q = q.replace("<", "\u2039").replace(">", "\u203a")
     if q:
         blocks.append(f"<question>{q}</question>")
 
