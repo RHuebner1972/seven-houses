@@ -1,4 +1,4 @@
-pytest
-pytest-postgresql
-pyswisseph
-freezegun
+pytest==9.2.0
+pytest-postgresql==9.1.1
+pyswisseph==2.10.3.2
+freezegun==1.5.5
