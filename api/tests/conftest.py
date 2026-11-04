@@ -165,3 +165,40 @@ def fake_opencage(monkeypatch):
     monkeypatch.setattr(httpx.Client, "get", fake_get)
     yield fake
     geocode.clear_cache()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-snapshots", action="store_true", default=False, help="rewrite tests/snapshots files"
+    )
+
+
+@pytest.fixture
+def snapshot(request):
+    from pathlib import Path
+
+    update = request.config.getoption("--update-snapshots")
+    base = Path(__file__).parent / "snapshots"
+
+    def check(name: str) -> str:
+        path = base / name
+        if update:
+            return _Writer(path)
+        return path.read_text(encoding="utf-8")
+
+    return check
+
+
+class _Writer(str):
+    """Equal to anything; records the compared value to disk when update mode is on."""
+
+    def __new__(cls, path):
+        obj = super().__new__(cls, "")
+        obj.path = path
+        return obj
+
+    def __eq__(self, other):
+        self.path.write_text(other, encoding="utf-8")
+        return True
+
+    __hash__ = str.__hash__
