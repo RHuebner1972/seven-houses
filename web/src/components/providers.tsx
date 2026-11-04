@@ -19,6 +19,8 @@ import { createApi, type Api } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import { decodeUserId, localStorageTokenStore, type TokenStore } from "@/lib/auth";
 import { ToastProvider } from "@/components/toast";
+import { selectBillingProvider } from "@/billing";
+import type { BillingProvider as BillingProviderApi } from "@/billing/provider";
 
 export interface AuthValue {
   token: string | null;
@@ -157,11 +159,79 @@ export function AuthProvider({
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** Placeholder; Task 10 supplies the real value. */
-export const BillingContext = createContext<null | unknown>(null);
+const BillingContext = createContext<BillingProviderApi | null>(null);
 
-export function BillingProvider({ children }: { children: ReactNode }) {
-  return <BillingContext.Provider value={null}>{children}</BillingContext.Provider>;
+/**
+ * The selected billing backend, already bound to the signed-in user: `packages()` and
+ * `purchase()` wait for `configure(userId)` to finish, so pages need not sequence it.
+ */
+export function useBilling(): BillingProviderApi {
+  const ctx = useContext(BillingContext);
+  if (!ctx) throw new Error("useBilling must be used within <BillingProvider>");
+  return ctx;
+}
+
+function defaultBilling(): BillingProviderApi {
+  // Literal `process.env.NEXT_PUBLIC_*` reads so the static build inlines them.
+  return selectBillingProvider({
+    NEXT_PUBLIC_BILLING: process.env.NEXT_PUBLIC_BILLING,
+    NEXT_PUBLIC_RC_WEB_KEY: process.env.NEXT_PUBLIC_RC_WEB_KEY,
+  }).provider;
+}
+
+export function BillingProvider({
+  children,
+  provider,
+}: {
+  children: ReactNode;
+  provider?: BillingProviderApi;
+}) {
+  const { userId } = useAuth();
+  const [backend] = useState(() => provider ?? defaultBilling());
+  // The configure() in flight (or settled) for a given user id; one per id, re-run on change.
+  const bound = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+
+  const bind = useCallback(
+    (id: string): Promise<void> => {
+      if (bound.current?.userId === id) return bound.current.promise;
+      const entry = { userId: id, promise: Promise.resolve() };
+      entry.promise = backend.configure(id).catch((e: unknown) => {
+        // let the next caller try again rather than caching the failure forever
+        if (bound.current === entry) bound.current = null;
+        throw e;
+      });
+      bound.current = entry;
+      return entry.promise;
+    },
+    [backend],
+  );
+
+  // Configure as soon as auth knows who we are, and again when sign-in changes the id.
+  useEffect(() => {
+    if (!userId) return;
+    bind(userId).catch(() => {
+      /* surfaced to whoever calls packages()/purchase() */
+    });
+  }, [userId, bind]);
+
+  const value = useMemo<BillingProviderApi>(
+    () => ({
+      configure: bind,
+      async packages() {
+        if (!userId) throw new Error("billing: no user yet");
+        await bind(userId);
+        return backend.packages();
+      },
+      async purchase(pkg) {
+        if (!userId) throw new Error("billing: no user yet");
+        await bind(userId);
+        return backend.purchase(pkg);
+      },
+    }),
+    [backend, bind, userId],
+  );
+
+  return <BillingContext.Provider value={value}>{children}</BillingContext.Provider>;
 }
 
 function defaultQueryClient() {
@@ -179,15 +249,18 @@ function defaultQueryClient() {
 export function Providers({
   children,
   queryClient,
+  billing,
 }: {
   children: ReactNode;
   queryClient?: QueryClient;
+  /** Test seam; production selects from `NEXT_PUBLIC_BILLING` / `NEXT_PUBLIC_RC_WEB_KEY`. */
+  billing?: BillingProviderApi;
 }) {
   const [client] = useState(() => queryClient ?? defaultQueryClient());
   return (
     <QueryClientProvider client={client}>
       <AuthProvider>
-        <BillingProvider>
+        <BillingProvider provider={billing}>
           <ToastProvider>{children}</ToastProvider>
         </BillingProvider>
       </AuthProvider>
