@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.errors import InsufficientCredits
 from app.models import CreditLedger, User
 
-
 _REFERENCE_UNIQUE = "credit_ledger_reference_id_key"
 
 

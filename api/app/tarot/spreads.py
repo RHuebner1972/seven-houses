@@ -34,7 +34,11 @@ SPREADS: dict[str, Spread] = {
         ("below", "Below", "The unconscious roots and underlying drivers of the situation."),
         ("advice", "Advice", "The stance or approach that would serve you best."),
         ("external", "External Influences", "How other people and surroundings affect the situation."),
-        ("hopes_fears", "Hopes and Fears", "What you long for and what you dread, which are often entangled."),
+        (
+            "hopes_fears",
+            "Hopes and Fears",
+            "What you long for and what you dread, which are often entangled.",
+        ),
         ("outcome", "Outcome", "Where the situation is likely to settle."),
     ]),
 }

@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.errors import InsufficientCredits, NotFound, ValidationFailed
 from app.ledger.service import debit_for_reading, refund_reading
 from app.models import BirthProfile, Chart, Reading, SpreadPrice, User
-from app.readings.generator import GenerationError, stream_reading
+from app.readings.generator import stream_reading
 from app.readings.prompts import QUESTION_MAX_CHARS, build_messages
 from app.tarot.draw import DrawnCard, draw
 from app.tarot.spreads import SPREADS

@@ -76,3 +76,18 @@ The client IP is the first entry of `X-Forwarded-For` (set by Vercel).
 3. Point `DATABASE_URL` at a managed Postgres and run `alembic upgrade head` against it before the first deploy and after any migration.
 4. Set `CORS_ORIGINS` to the web app origin(s), e.g. `https://seventhhouse.app`.
 5. In RevenueCat, set the webhook URL to `https://<your-api-host>/billing/revenuecat` with the authorization header value `Bearer <REVENUECAT_WEBHOOK_SECRET>`.
+
+### First deploy checklist
+
+1. Create the Vercel project with Root Directory `api/`.
+2. Set env vars in the project: `ENV=prod`, `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `RESEND_API_KEY`, `GOOGLE_CLIENT_ID`, `OPENCAGE_API_KEY`, `CORS_ORIGINS`, `APP_BASE_URL`, plus optionally `MODEL_PAID`, `MODEL_DAILY`, `EPHEMERIS_PATH`, `CREDIT_PRODUCTS`.
+3. Create the Neon database and run `alembic upgrade head` locally with `DATABASE_URL` pointed at it.
+4. Deploy with `vercel --prod` from `api/`.
+5. Smoke test (`URL` is the deployment URL):
+   - `curl $URL/health` returns `{"status":"ok"}`
+   - `curl -X POST $URL/auth/anonymous` returns 201
+   - `curl $URL/spreads` returns the three spreads
+6. In RevenueCat, point the webhook at `$URL/billing/revenuecat` with the header `Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>`.
+7. Send a test event from the RevenueCat dashboard and confirm the response is `{"credited": false, "reason": "ignored_event_type"}` (TEST events are ignored by design).
+
+Function size: the JPL kernel `de440s.bsp` is bundled via `includeFiles`. If the deployment exceeds Vercel's function size limit, move the file to Vercel Blob, download it at cold start, and cache it under `/tmp` (set `EPHEMERIS_PATH` accordingly).

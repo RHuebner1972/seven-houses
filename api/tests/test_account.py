@@ -3,7 +3,6 @@ from sqlalchemy import func, select
 
 from app.config import Settings
 from app.main import create_app
-
 from app.models import (
     BirthProfile,
     CreditLedger,
