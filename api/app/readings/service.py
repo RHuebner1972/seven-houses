@@ -7,11 +7,13 @@ the debit reference plus ":refund". Both are unique in the ledger, so refunds ar
 idempotent.
 """
 
+import logging
+import time
 from collections.abc import Iterator
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.astro.chart import ChartData
@@ -19,12 +21,18 @@ from app.config import get_settings
 from app.errors import InsufficientCredits, NotFound, ValidationFailed
 from app.ledger.service import debit_for_reading, refund_reading
 from app.models import BirthProfile, Chart, Reading, SpreadPrice, User
-from app.readings.generator import stream_reading
+from app.readings.generator import GenerationError, stream_reading
 from app.readings.prompts import QUESTION_MAX_CHARS, build_messages
 from app.tarot.draw import DrawnCard, draw
 from app.tarot.spreads import SPREADS
 
+logger = logging.getLogger(__name__)
+
 PERSIST_EVERY_CHUNKS = 20
+# Wall-clock budget for one generation, including a drain after disconnect; kept
+# under Vercel's 300 s maxDuration so a stream can never pin the function past it.
+GENERATION_DEADLINE_SECONDS = 240.0
+_clock = time.monotonic
 # A pending reading not written for this long has no live stream behind it (the
 # generation deadline is well inside it); it may be failed and refunded.
 STALE_PENDING = timedelta(minutes=6)
@@ -95,14 +103,25 @@ def start_reading(
 def run_generation(
     db: Session, reading: Reading, model: str | None = None, max_tokens: int = 2000
 ) -> Iterator[str]:
-    """Stream the reading text. On completion mark it complete; on any failure
-    (including the caller closing the generator) mark it failed and refund."""
+    """Stream the reading text; on completion mark it complete (the debit is kept).
+
+    Failure policy:
+    - A generation error or any unexpected exception: mark failed and refund.
+    - The caller closing the generator (client disconnect), "drain-and-complete":
+      if no chunk had been handed out yet, fail and refund; otherwise finish the
+      generation without yielding, persist it as complete and keep the debit, so
+      the user finds the full reading in their history. The drain honours the
+      generation deadline; if it fails or runs out of time, fail and refund with
+      the partial text.
+    """
     if reading.status != "pending":
         raise ValidationFailed(f"reading is {reading.status}, not pending")
     settings = get_settings()
     if model is None:
         model = settings.model_daily if reading.spread_type == "daily" else settings.model_paid
+    deadline = _clock() + GENERATION_DEADLINE_SECONDS
     buffer = ""
+    delivered = 0
     stream = None
     try:
         chart = None
@@ -114,7 +133,6 @@ def run_generation(
         messages = build_messages(reading.spread_type, cards, reading.question, chart)
 
         stream = stream_reading(model, messages, max_tokens)
-        count = 0
         while True:
             try:
                 chunk = next(stream)
@@ -122,24 +140,33 @@ def run_generation(
                 usage = stop.value
                 break
             buffer += chunk
-            count += 1
+            delivered += 1
             yield chunk
-            if count % PERSIST_EVERY_CHUNKS == 0:
+            if delivered % PERSIST_EVERY_CHUNKS == 0:
                 reading.text = buffer
                 db.commit()
 
-        token_usage = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
-        if _retries(reading):
-            token_usage["retries"] = _retries(reading)
-        reading.text = buffer
-        reading.status = "complete"
-        reading.model = model
-        reading.token_usage = token_usage
-        db.commit()
+        _complete(db, reading, buffer, model, usage)
     except GeneratorExit:
         # Client disconnected; a generator must not yield after GeneratorExit.
-        _close(stream)
-        _fail_and_refund(db, reading, buffer)
+        if delivered == 0:
+            _close(stream)
+            _fail_and_refund(db, reading, buffer)
+            return
+        try:
+            while True:
+                if _clock() > deadline:
+                    raise GenerationError("generation deadline exceeded")
+                try:
+                    buffer += next(stream)
+                except StopIteration as stop:
+                    usage = stop.value
+                    break
+            _complete(db, reading, buffer, model, usage)
+        except Exception:
+            logger.warning("reading %s: drain after disconnect failed; refunding", reading.id)
+            _close(stream)
+            _fail_and_refund(db, reading, buffer)
         return
     except Exception:
         # GenerationError and anything unexpected: never keep credits for an
@@ -149,6 +176,23 @@ def run_generation(
         raise
 
 
+def _complete(db: Session, reading: Reading, text: str, model: str, usage) -> None:
+    """Persist the finished reading, but only if it is still pending: a reading that
+    was failed and refunded meanwhile (e.g. by a stale sweep) must not turn complete."""
+    token_usage = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+    if _retries(reading):
+        token_usage["retries"] = _retries(reading)
+    done = db.execute(
+        update(Reading)
+        .where(Reading.id == reading.id, Reading.status == "pending")
+        .values(status="complete", text=text, model=model, token_usage=token_usage)
+    ).rowcount
+    db.commit()
+    db.refresh(reading)
+    if not done:
+        logger.warning("reading %s: finished but no longer pending; left %s", reading.id, reading.status)
+
+
 def _close(stream) -> None:
     if stream is not None:
         stream.close()
@@ -156,6 +200,8 @@ def _close(stream) -> None:
 
 def _fail_and_refund(db: Session, reading: Reading, partial_text: str = "") -> None:
     db.rollback()  # the session may be mid-transaction
+    if reading.status == "complete":
+        return  # never refund a delivered reading
     reading.status = "failed"
     if len(partial_text) > len(reading.text or ""):
         reading.text = partial_text

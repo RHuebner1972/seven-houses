@@ -5,7 +5,8 @@ ownership, 402) run in the route before the StreamingResponse is returned. The
 stream then drives `run_generation` with the request's session; whatever ends the
 stream (completion, generation error, client disconnect, cancellation) closes the
 inner generator, so the service either completes the reading or fails and refunds
-it. A reading never stays `pending` with a held debit.
+it (on a disconnect after text was sent it drains and completes; see
+`run_generation`). A reading never stays `pending` with a held debit.
 """
 
 import json
@@ -74,7 +75,8 @@ class _SSEResponse(StreamingResponse):
     Two layers, both shielded from cancellation:
     - `stream_response` closes the body iterator. Starlette stops iterating on
       disconnect/cancellation but leaves an async generator suspended at its
-      `yield`; closing it lets `run_generation` fail and refund promptly.
+      `yield`; closing it lets `run_generation` drain-and-complete or fail and
+      refund promptly.
     - `__call__` runs `fail_if_pending` once the response is over, however it
       ended. This covers streams cut off before `run_generation` started (e.g.
       during the `cards` send, or before the body began), where closing an
@@ -144,7 +146,8 @@ def _stream(
             yield _sse("done", {"reading_id": str(reading.id)})
         finally:
             # No-op if the generator finished; otherwise GeneratorExit inside
-            # run_generation marks the reading failed and refunds it.
+            # run_generation drains and completes the reading (text already sent)
+            # or fails and refunds it, within the generation deadline.
             with anyio.CancelScope(shield=True):
                 await anyio.to_thread.run_sync(gen.close)
 

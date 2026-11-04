@@ -221,17 +221,76 @@ def test_generation_midstream_failure_keeps_partial_text(db, user, user_with_cre
     assert r.status == "failed" and r.text == "ab" and balance(db, user.id) == 1
 
 
-def test_client_disconnect_refunds(db, user, user_with_credits, fake_anthropic):
+def test_client_disconnect_after_delta_drains_and_completes(
+    db, user, user_with_credits, fake_anthropic
+):
+    """Drain-and-complete: once text has been handed out, a disconnect finishes the
+    generation without yielding, persists it complete and keeps the debit."""
     user_with_credits(1)
     fake_anthropic.chunks = ["a"] * 100
+    fake_anthropic.usage = (5, 6)
     r = start_reading(db, user, "three_card", None, None)
     g = run_generation(db, r)
     next(g)
     g.close()  # simulates disconnect
     db.refresh(r)
-    assert r.status == "failed" and balance(db, user.id) == 1
-    assert r.text == "a"
+    assert r.status == "complete" and r.text == "a" * 100
+    assert r.token_usage == {"input_tokens": 5, "output_tokens": 6}
+    assert balance(db, user.id) == 0
+    assert _ledger(db, user) == [("reading", -1, str(r.id))]
+
+
+def test_disconnect_drain_failure_fails_and_refunds(db, user, user_with_credits, fake_anthropic):
+    user_with_credits(1)
+    fake_anthropic.chunks = ["a", "b", "c", "d", "e"]
+    fake_anthropic.raise_after_chunks = 3
+    fake_anthropic.error = _conn_error()
+    r = start_reading(db, user, "three_card", None, None)
+    g = run_generation(db, r)
+    next(g)
+    g.close()  # must not raise: the drain's GenerationError is handled
+    db.refresh(r)
+    assert r.status == "failed" and r.text == "abc"
+    assert balance(db, user.id) == 1
     assert _ledger(db, user) == [("reading", -1, str(r.id)), ("refund", 1, f"{r.id}:refund")]
+
+
+def test_disconnect_drain_past_deadline_fails_and_refunds(
+    db, user, user_with_credits, fake_anthropic, monkeypatch
+):
+    from app.readings import service
+
+    user_with_credits(1)
+    fake_anthropic.chunks = ["a"] * 10
+    r = start_reading(db, user, "three_card", None, None)
+    g = run_generation(db, r)
+    next(g)
+    monkeypatch.setattr(service, "_clock", lambda: float("inf"))
+    g.close()
+    db.refresh(r)
+    assert r.status == "failed" and r.text == "a"
+    assert balance(db, user.id) == 1
+
+
+def test_completion_does_not_overwrite_a_reading_failed_meanwhile(
+    db, engine, user, user_with_credits, fake_anthropic
+):
+    """If something else failed and refunded the reading mid-stream, finishing the
+    stream must not flip it to complete (that would be a free reading)."""
+    from sqlalchemy.orm import Session
+
+    from app.readings.service import fail_if_pending
+
+    user_with_credits(1)
+    fake_anthropic.chunks = ["a", "b"]
+    r = start_reading(db, user, "three_card", None, None)
+    g = run_generation(db, r)
+    next(g)
+    with Session(engine) as other:
+        assert fail_if_pending(other, r.id) is True
+    assert list(g) == ["b"]
+    db.refresh(r)
+    assert r.status == "failed" and balance(db, user.id) == 1
 
 
 def test_unexpected_error_also_refunds(db, user, user_with_credits, fake_anthropic, monkeypatch):
@@ -313,7 +372,9 @@ def test_retry_then_failure_refunds_again(db, user, user_with_credits, fake_anth
     assert _ledger(db, user)[-1] == ("reading", -1, f"{r.id}:retry2")
 
 
-def test_retry_disconnect_refunds_retry_reference(db, user, user_with_credits, fake_anthropic):
+def test_retry_disconnect_after_delta_completes_and_keeps_retry_debit(
+    db, user, user_with_credits, fake_anthropic
+):
     user_with_credits(1)
     r = _fail_once(db, user, fake_anthropic)
     r = retry_reading(db, user, r.id)
@@ -321,8 +382,10 @@ def test_retry_disconnect_refunds_retry_reference(db, user, user_with_credits, f
     g = run_generation(db, r)
     next(g)
     g.close()
-    assert balance(db, user.id) == 1
-    assert _ledger(db, user)[-1] == ("refund", 1, f"{r.id}:retry1:refund")
+    db.refresh(r)
+    assert r.status == "complete" and r.text == "aaaaa"
+    assert balance(db, user.id) == 0
+    assert _ledger(db, user)[-1] == ("reading", -1, f"{r.id}:retry1")
 
 
 def test_retry_insufficient_credits_leaves_reading_failed(db, user, user_with_credits, fake_anthropic):

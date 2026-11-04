@@ -92,18 +92,23 @@ def test_generation_error_emits_error_event(client, db, user_with_credits, fake_
     assert reading.status == "failed" and balance(db, user.id) == 1
 
 
-def test_disconnect_marks_failed_and_refunds(client, db, user_with_credits, fake_anthropic):
+def test_disconnect_after_delta_drains_and_completes(client, db, user_with_credits, fake_anthropic):
+    """Drain-and-complete: the client saw text, then went away; the server finishes
+    the generation, stores it complete and keeps the debit."""
     user = user_with_credits(1)
     fake_anthropic.chunks = ["a"] * 200
     with client.stream(
         "POST", "/readings", json={"spread_type": "three_card"}, headers=auth_headers(user)
     ) as r:
-        assert next(r.iter_lines()) == "event: cards"
+        lines = r.iter_lines()
+        assert next(lines) == "event: cards"
+        while next(lines) != "event: delta":
+            pass
     # Exiting the context closes the response; TestClient cancels the app task and
     # waits for it to finish, so the reading's final state is already persisted.
     reading = _reading(db)
-    assert reading.status == "failed"
-    assert balance(db, user.id) == 1
+    assert reading.status == "complete" and reading.text == "a" * 200
+    assert balance(db, user.id) == 0
 
 
 def test_stream_runs_before_db_dependency_is_closed(client, db, user_with_credits, fake_anthropic):
@@ -261,7 +266,7 @@ def test_cancel_at_next_await_still_closes_generator(
     """Cancellation delivered at event_stream's `await` on the threadpool `next`
     (anyio's pre-thread checkpoint; the thread call itself is shielded, so a cancel
     issued mid-`next` lands at the following checkpoint instead). The shielded
-    finally must still close run_generation, which fails and refunds."""
+    finally must still close run_generation, which drains and completes."""
     import anyio
 
     from app.readings import router
@@ -291,6 +296,8 @@ def test_cancel_at_next_await_still_closes_generator(
 
     anyio.run(main)
     db.expire_all()
-    assert db.get(Reading, reading.id).status == "failed"
-    assert balance(db, user.id) == 1
+    # A delta had been handed out, so closing drains and completes (debit kept).
+    row = db.get(Reading, reading.id)
+    assert row.status == "complete" and row.text == "abc"
+    assert balance(db, user.id) == 0
     assert held[0].gi_frame is None  # closed, not merely abandoned
