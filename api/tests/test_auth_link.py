@@ -29,8 +29,8 @@ def test_google_existing_identity_returns_existing_user(
     assert r.status_code == 200
     assert r.json()["user_id"] == str(other_user_google_g1.id)
     assert verify_token(r.json()["token"]).user_id == other_user_google_g1.id
-    db.refresh(user)
-    assert user.email is None  # abandoned, untouched
+    db.expire_all()
+    assert db.get(User, user.id) is None  # anonymous user merged into the owner and removed
 
 
 def test_google_existing_email_returns_existing_user(client, db, user, fake_google):
@@ -231,3 +231,113 @@ def test_magic_send_failure_still_202_and_no_row(client, db, user, monkeypatch, 
     assert r.status_code == 202
     assert db.scalars(select(MagicToken)).all() == []
     assert "Failed to send magic link email" in caplog.text
+
+
+# --- merging anonymous data on link -----------------------------------------
+
+
+def _anon_with_data(db, user, profile, fake_anthropic):
+    """`user` (anonymous) with a profile, a completed paid reading (1 debited), 3
+    credits left, and daily draws on 2026-11-01 and 2026-11-02."""
+    from datetime import date
+    from uuid import uuid4
+
+    from app.ledger.service import credit
+    from app.models import DailyDraw, Reading
+    from app.readings.service import run_generation, start_reading
+
+    credit(db, user.id, 4, "grant", f"grant-{uuid4()}")
+    db.commit()
+    fake_anthropic.chunks = ["ok"]
+    reading = start_reading(db, user, "three_card", None, profile.id)
+    list(run_generation(db, reading))
+    card = {"position": "today", "card_id": "the_fool", "reversed": False}
+    for day in (1, 2):
+        daily = Reading(user_id=user.id, spread_type="daily", cards=[card], status="complete")
+        db.add(daily)
+        db.flush()
+        db.add(DailyDraw(user_id=user.id, local_date=date(2026, 11, day), card=card, reading_id=daily.id))
+    db.commit()
+    return reading
+
+
+def test_google_link_merges_anonymous_data_into_existing_owner(
+    client, db, user, profile, other_user_google_g1, fake_google, fake_anthropic
+):
+    from datetime import date
+    from uuid import uuid4
+
+    from sqlalchemy import func
+
+    from app.ledger.service import balance, credit
+    from app.models import BirthProfile, CreditLedger, DailyDraw, GenerationEvent, Reading
+    from app.ratelimit import record_generation
+
+    owner = other_user_google_g1
+    reading = _anon_with_data(db, user, profile, fake_anthropic)
+    record_generation(db, user.id, "reading")
+    credit(db, owner.id, 2, "grant", f"grant-{uuid4()}")
+    card = {"position": "today", "card_id": "the_sun", "reversed": False}
+    db.add(DailyDraw(user_id=owner.id, local_date=date(2026, 11, 1), card=card))
+    db.commit()
+    assert balance(db, user.id) == 3
+    total_before = db.scalar(select(func.sum(CreditLedger.delta)))
+
+    r = client.post("/auth/google", json={"id_token": "x"}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(owner.id)
+
+    db.expire_all()
+    assert db.get(User, user.id) is None
+    assert db.get(BirthProfile, profile.id).user_id == owner.id
+    assert db.get(Reading, reading.id).user_id == owner.id
+    assert db.query(Reading).filter_by(user_id=owner.id).count() == 3  # paid + 2 daily
+    assert db.query(GenerationEvent).one().user_id == owner.id
+    assert balance(db, owner.id) == 2 + 3
+    assert db.scalar(select(func.sum(CreditLedger.delta))) == total_before
+    assert db.query(CreditLedger).filter_by(reference_id=str(reading.id)).one().user_id == owner.id
+    transfer_in = db.query(CreditLedger).filter_by(reason="transfer_in").one()
+    assert (transfer_in.delta, transfer_in.reference_id) == (4, f"transfer:{user.id}:in")
+    draws = {(d.local_date.day, d.card["card_id"]) for d in db.query(DailyDraw).filter_by(user_id=owner.id)}
+    assert draws == {(1, "the_sun"), (2, "the_fool")}  # owner's Nov 1 kept, anon's Nov 2 moved
+    assert client.get("/me", headers=auth_headers(user)).status_code == 401
+
+
+def test_merge_failure_leaves_both_users_untouched(
+    db, engine, user, profile, other_user_google_g1, fake_anthropic, monkeypatch
+):
+    from sqlalchemy.orm import Session
+
+    from app.ledger.service import balance
+    from app.models import BirthProfile, Reading
+
+    reading = _anon_with_data(db, user, profile, fake_anthropic)
+
+    def boom(*a, **kw):
+        raise RuntimeError("mid-merge failure")
+
+    monkeypatch.setattr(linking, "balance", boom)  # after profiles/readings were re-pointed
+    with pytest.raises(RuntimeError):
+        linking.link_and_commit(db, user, "google", "g1", "a@x.io")
+    with Session(engine) as other:
+        assert other.get(User, user.id) is not None
+        assert other.get(BirthProfile, profile.id).user_id == user.id
+        assert other.get(Reading, reading.id).user_id == user.id
+        assert balance(other, user.id) == 3 and balance(other, other_user_google_g1.id) == 0
+
+
+def test_magic_verify_with_bearer_merges_into_existing_owner(
+    client, db, user, profile, fake_resend
+):
+    from app.models import BirthProfile
+
+    existing = User(email="a@x.io", auth_provider="email")
+    db.add(existing)
+    db.commit()
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    token = fake_resend.extract_token()
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(existing.id)
+    db.expire_all()
+    assert db.get(User, user.id) is None
+    assert db.get(BirthProfile, profile.id).user_id == existing.id
+    assert client.post("/auth/magic/verify", json={"token": token}).status_code == 401
