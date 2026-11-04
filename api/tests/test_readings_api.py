@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import anthropic
 import httpx
+import pytest
 
 from app.db import get_db
 from app.ledger.service import balance
@@ -236,3 +237,60 @@ def test_spreads_public(client):
         "meaning": "The background and earlier events that shaped the situation.",
     }
     assert spreads["daily"]["credits"] == 0
+
+
+def test_disconnect_before_any_line_marks_failed_and_refunds(
+    client, db, user_with_credits, fake_anthropic
+):
+    """Closing before the first event is read leaves run_generation unstarted;
+    the response-level cleanup must still fail and refund the reading."""
+    user = user_with_credits(1)
+    fake_anthropic.chunks = ["a"] * 200
+    with client.stream(
+        "POST", "/readings", json={"spread_type": "three_card"}, headers=auth_headers(user)
+    ) as r:
+        assert r.status_code == 200
+    reading = _reading(db)
+    assert reading.status == "failed"
+    assert balance(db, user.id) == 1
+
+
+def test_cancel_at_next_await_still_closes_generator(
+    db, user_with_credits, fake_anthropic, monkeypatch
+):
+    """Cancellation delivered at event_stream's `await` on the threadpool `next`
+    (anyio's pre-thread checkpoint; the thread call itself is shielded, so a cancel
+    issued mid-`next` lands at the following checkpoint instead). The shielded
+    finally must still close run_generation, which fails and refunds."""
+    import anyio
+
+    from app.readings import router
+    from app.readings.router import _stream
+    from app.readings.service import run_generation, start_reading
+
+    # Keep the inner generator referenced so CPython's refcount finalisation cannot
+    # close it for us: only the shielded finally may.
+    held = []
+    monkeypatch.setattr(
+        router, "run_generation", lambda *a, **k: held.append(run_generation(*a, **k)) or held[-1]
+    )
+    user = user_with_credits(1)
+    fake_anthropic.chunks = ["a", "b", "c"]
+    reading = start_reading(db, user, "three_card", None, None)
+    agen = _stream(db, reading, 1).body_iterator
+
+    async def main():
+        assert (await agen.__anext__()).startswith("event: cards")
+        assert (await agen.__anext__()).startswith("event: delta")
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            await agen.__anext__()
+        assert scope.cancelled_caught
+        with pytest.raises(StopAsyncIteration):
+            await agen.__anext__()  # the generator finished during cancellation
+
+    anyio.run(main)
+    db.expire_all()
+    assert db.get(Reading, reading.id).status == "failed"
+    assert balance(db, user.id) == 1
+    assert held[0].gi_frame is None  # closed, not merely abandoned

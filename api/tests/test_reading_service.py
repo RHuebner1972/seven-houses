@@ -368,3 +368,51 @@ def test_generation_refuses_non_pending_reading_without_refund(
         list(run_generation(db, r))
     db.refresh(r)
     assert r.status == "complete" and balance(db, user.id) == 0
+
+
+def test_fail_if_pending_fails_and_refunds_pending(db, user_with_credits):
+    from app.readings.service import fail_if_pending
+
+    user = user_with_credits(1)
+    r = start_reading(db, user, "three_card", None, None)
+    assert fail_if_pending(db, r.id) is True
+    db.expire_all()
+    assert db.get(Reading, r.id).status == "failed" and balance(db, user.id) == 1
+    assert fail_if_pending(db, r.id) is False
+    assert balance(db, user.id) == 1
+
+
+def test_fail_if_pending_leaves_completed_reading_alone(db, user_with_credits, fake_anthropic):
+    from app.readings.service import fail_if_pending
+
+    user = user_with_credits(1)
+    fake_anthropic.chunks = ["done"]
+    r = start_reading(db, user, "three_card", None, None)
+    assert "".join(run_generation(db, r)) == "done"
+    before = _ledger(db, user)
+    assert fail_if_pending(db, r.id) is False
+    db.expire_all()
+    row = db.get(Reading, r.id)
+    assert row.status == "complete" and row.text == "done"
+    assert _ledger(db, user) == before and balance(db, user.id) == 0
+
+
+def test_fail_if_pending_ignores_a_later_attempt(db, user_with_credits, fake_anthropic):
+    """A stale cleanup for attempt 0 must not fail a retry that is now pending."""
+    from app.readings.service import fail_if_pending
+
+    user = user_with_credits(2)
+    r = start_reading(db, user, "three_card", None, None)
+    fail_if_pending(db, r.id)
+    retry_reading(db, user, r.id)
+    assert fail_if_pending(db, r.id, attempt=0) is False
+    db.expire_all()
+    assert db.get(Reading, r.id).status == "pending" and balance(db, user.id) == 1
+    assert fail_if_pending(db, r.id, attempt=1) is True
+    assert balance(db, user.id) == 2
+
+
+def test_fail_if_pending_unknown_id(db):
+    from app.readings.service import fail_if_pending
+
+    assert fail_if_pending(db, uuid4()) is False

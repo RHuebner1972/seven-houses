@@ -20,14 +20,20 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
-from starlette.types import Send
+from starlette.types import Receive, Scope, Send
 
 from app.auth.deps import current_user
 from app.db import get_db
 from app.errors import NotFound
 from app.models import Reading, SpreadPrice, User
 from app.readings.generator import GenerationError
-from app.readings.service import retry_reading, run_generation, start_reading
+from app.readings.service import (
+    current_attempt,
+    fail_if_pending,
+    retry_reading,
+    run_generation,
+    start_reading,
+)
 from app.tarot.spreads import SPREADS
 
 logger = logging.getLogger(__name__)
@@ -62,13 +68,23 @@ _ERROR_EVENT = _sse("error", {"code": "generation_failed", "message": GENERATION
 
 
 class _SSEResponse(StreamingResponse):
-    """StreamingResponse that always closes its body iterator.
+    """StreamingResponse that guarantees the reading never stays pending.
 
-    Starlette stops iterating on disconnect/cancellation but leaves an async
-    generator suspended at its `yield`, to be finalised whenever it is garbage
-    collected. Closing it here, shielded from cancellation, makes the reading's
-    fail-and-refund path run before the response task finishes.
+    Two layers, both shielded from cancellation:
+    - `stream_response` closes the body iterator. Starlette stops iterating on
+      disconnect/cancellation but leaves an async generator suspended at its
+      `yield`; closing it lets `run_generation` fail and refund promptly.
+    - `__call__` runs `fail_if_pending` once the response is over, however it
+      ended. This covers streams cut off before `run_generation` started (e.g.
+      during the `cards` send, or before the body began), where closing an
+      unstarted generator runs no handler.
     """
+
+    def __init__(self, content, *, db: Session, reading_id: uuid.UUID, attempt: int, **kwargs):
+        super().__init__(content, **kwargs)
+        self._db = db
+        self._reading_id = reading_id
+        self._attempt = attempt
 
     async def stream_response(self, send: Send) -> None:
         try:
@@ -76,6 +92,19 @@ class _SSEResponse(StreamingResponse):
         finally:
             with anyio.CancelScope(shield=True):
                 await self.body_iterator.aclose()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.CancelScope(shield=True):
+                await self.body_iterator.aclose()
+                if await anyio.to_thread.run_sync(
+                    fail_if_pending, self._db, self._reading_id, self._attempt
+                ):
+                    logger.warning(
+                        "reading %s: stream ended before generation; refunded", self._reading_id
+                    )
 
 
 def _stream(db: Session, reading: Reading, cost: int) -> _SSEResponse:
@@ -87,8 +116,12 @@ def _stream(db: Session, reading: Reading, cost: int) -> _SSEResponse:
             )
             while True:
                 try:
-                    # Thread offload is not abandoned on cancel: a cancellation waits for
-                    # `next` to return, so `gen` is never closed while it is executing.
+                    # The thread call is shielded (abandon_on_cancel=False): a cancel can
+                    # land at anyio's checkpoint before the thread starts, but one issued
+                    # mid-`next` is deferred until `next` returns, so `gen` is never closed
+                    # while executing. Under uvicorn (ASGI spec 2.3) disconnect arrives as
+                    # task-group cancellation, usually at Starlette's `send`, i.e. while
+                    # we are suspended at a `yield` (handled by _SSEResponse's aclose).
                     chunk = await anyio.to_thread.run_sync(next, gen, _SENTINEL)
                 except GenerationError:
                     yield _ERROR_EVENT
@@ -108,7 +141,14 @@ def _stream(db: Session, reading: Reading, cost: int) -> _SSEResponse:
             with anyio.CancelScope(shield=True):
                 await anyio.to_thread.run_sync(gen.close)
 
-    return _SSEResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+    return _SSEResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+        db=db,
+        reading_id=reading.id,
+        attempt=current_attempt(reading),
+    )
 
 
 def _cost(db: Session, spread_type: str) -> int:

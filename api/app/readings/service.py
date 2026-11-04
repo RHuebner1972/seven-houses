@@ -34,6 +34,11 @@ def _retries(reading: Reading) -> int:
     return (reading.token_usage or {}).get("retries", 0)
 
 
+def current_attempt(reading: Reading) -> int:
+    """The generation attempt a reading is on: 0 for the first, n for retry n."""
+    return _retries(reading)
+
+
 def _debit_reference(reading_id: UUID, retry: int) -> str:
     return f"{reading_id}:retry{retry}" if retry else str(reading_id)
 
@@ -161,6 +166,25 @@ def _fail_and_refund(db: Session, reading: Reading, partial_text: str = "") -> N
             reference_id=f"{_debit_reference(reading.id, retry)}:refund",
         )
     db.commit()
+
+
+def fail_if_pending(db: Session, reading_id: UUID, attempt: int | None = None) -> bool:
+    """Fail and refund the reading if it is still pending; return whether it did.
+
+    A safety net for streams that end before `run_generation` started (its own
+    failure handling only exists once the generator is running). Rolls back first
+    and re-reads the row, so it is safe after an aborted transaction. When `attempt`
+    (the retry count the caller started) is given, a reading that has since moved
+    on to a later attempt is left alone.
+    """
+    db.rollback()
+    reading = db.get(Reading, reading_id, populate_existing=True)
+    if reading is None or reading.status != "pending":
+        return False
+    if attempt is not None and _retries(reading) != attempt:
+        return False
+    _fail_and_refund(db, reading)
+    return True
 
 
 def retry_reading(db: Session, user: User, reading_id: UUID) -> Reading:
