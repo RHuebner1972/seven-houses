@@ -152,7 +152,9 @@ def run_generation(
         cards = [DrawnCard.model_validate(c) for c in reading.cards]
         messages = build_messages(reading.spread_type, cards, reading.question, chart)
 
-        stream = stream_reading(model, messages, max_tokens)
+        stream = stream_reading(
+            model, messages, max_tokens, allow_truncation=reading.spread_type == "daily"
+        )
         while True:
             try:
                 chunk = next(stream)

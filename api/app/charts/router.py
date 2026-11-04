@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, time
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from skyfield.errors import EphemerisRangeError
 from sqlalchemy import select
@@ -17,11 +17,13 @@ from app.charts.geocode import geocode
 from app.db import get_db
 from app.errors import NotFound, ValidationFailed
 from app.models import BirthProfile, Chart, User
+from app.ratelimit import GEOCODE_LIMIT, HOUR, check_user_rate, record_generation
 
 router = APIRouter()
 
 MIN_BIRTH_DATE = MIN_SUPPORTED_DATE
 MAX_BIRTH_DATE = MAX_SUPPORTED_DATE
+GEOCODE_QUERY_MAX_CHARS = 120
 
 
 class ProfileBody(BaseModel):
@@ -60,9 +62,15 @@ def _owned_profile(db: Session, user: User, profile_id: uuid.UUID) -> BirthProfi
 
 
 @router.get("/geocode")
-def geocode_places(q: str, _user: Annotated[User, Depends(current_user)]):
+def geocode_places(
+    q: Annotated[str, Query(max_length=GEOCODE_QUERY_MAX_CHARS)],
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
     if len(q.strip()) < 2:
         raise ValidationFailed("q: must be at least 2 characters")
+    check_user_rate(db, user.id, "geocode", GEOCODE_LIMIT, HOUR)
+    record_generation(db, user.id, "geocode")  # every call counts, cached or not
     return [place.model_dump() for place in geocode(q)]
 
 

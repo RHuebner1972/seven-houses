@@ -625,3 +625,30 @@ def test_debit_amount(db, user, user_with_credits):
     r = start_reading(db, user, "celtic_cross", None, None)
     assert debit_amount(db, str(r.id)) == 3
     assert debit_amount(db, f"{r.id}:retry1") is None
+
+
+def test_truncated_paid_reading_fails_and_refunds(db, user, user_with_credits, fake_anthropic):
+    user_with_credits(1)
+    fake_anthropic.chunks = ["a", "b"]
+    fake_anthropic.stop_reason = "max_tokens"
+    r = start_reading(db, user, "three_card", None, None)
+    with pytest.raises(GenerationError, match="truncated"):
+        list(run_generation(db, r))
+    db.refresh(r)
+    assert r.status == "failed" and r.text == "ab" and balance(db, user.id) == 1
+
+
+def test_truncated_daily_reading_completes_with_footer(db, user, fake_anthropic):
+    from app.readings.prompts import FOOTER
+    from app.tarot.draw import draw
+
+    r = Reading(
+        user_id=user.id, spread_type="daily", cards=[c.model_dump() for c in draw("daily")], status="pending"
+    )
+    db.add(r)
+    db.commit()
+    fake_anthropic.chunks = ["Your card"]
+    fake_anthropic.stop_reason = "max_tokens"
+    list(run_generation(db, r, max_tokens=600))
+    db.refresh(r)
+    assert r.status == "complete" and r.text == f"Your card\n\n{FOOTER}"

@@ -40,6 +40,9 @@ Mention only the 2 to 4 placements that illuminate the cards, by name, and keep 
 UNKNOWN_TIME_NOTE = (
     "The birth time is unknown, so houses and the Ascendant are not available; do not infer them."
 )
+POLAR_LATITUDE_NOTE = (
+    "The birth time is known, but the birthplace is too close to the pole for houses and the Ascendant to be calculated, so they are not available; do not infer them."
+)
 
 
 def _label(key: str) -> str:
@@ -104,7 +107,12 @@ def build_messages(
         blocks.append(_chart_block(chart))
         guidance = WEAVING_GUIDANCE
         if not chart.time_known:
-            guidance += "\n" + UNKNOWN_TIME_NOTE
+            note = (
+                POLAR_LATITUDE_NOTE
+                if chart.houses_unavailable_reason == "polar_latitude"
+                else UNKNOWN_TIME_NOTE
+            )
+            guidance += "\n" + note
         blocks.append(guidance)
 
     return [{"role": "user", "content": "\n\n".join(blocks)}]

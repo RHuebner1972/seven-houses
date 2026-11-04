@@ -6,6 +6,7 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEV_JWT_SECRET = "dev-secret-change-me-not-for-production-use-0123456789abcdef"
+MIN_PROD_JWT_SECRET_LEN = 32
 
 
 class Settings(BaseSettings):
@@ -38,10 +39,22 @@ class Settings(BaseSettings):
                 v = v.split(",")
         return [o.strip() for o in v if o.strip()]
 
+    @field_validator("credit_products")
+    @classmethod
+    def _positive_credit_amounts(cls, v: dict[str, int]) -> dict[str, int]:
+        bad = sorted(k for k, amount in v.items() if amount <= 0)
+        if bad:
+            raise ValueError(f"CREDIT_PRODUCTS amounts must be positive: {', '.join(bad)}")
+        return v
+
     @model_validator(mode="after")
     def _require_real_secret_in_prod(self):
         if self.env == "prod" and self.jwt_secret in ("", DEV_JWT_SECRET):
             raise ValueError("JWT_SECRET must be set to a non-default value when ENV=prod")
+        if self.env == "prod" and len(self.jwt_secret) < MIN_PROD_JWT_SECRET_LEN:
+            raise ValueError(
+                f"JWT_SECRET must be at least {MIN_PROD_JWT_SECRET_LEN} characters when ENV=prod"
+            )
         return self
 
 

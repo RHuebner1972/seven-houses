@@ -67,6 +67,42 @@ def test_create_profile_unknown_time(client, user):
     assert r.json()["profile"]["birth_time"] is None
 
 
+def test_geocode_query_too_long_422(client, user, fake_opencage):
+    r = client.get("/geocode", params={"q": "x" * 121}, headers=auth_headers(user))
+    assert r.status_code == 422 and r.json()["error"]["code"] == "validation_failed"
+    assert fake_opencage.calls == []
+    assert client.get("/geocode", params={"q": "x" * 120}, headers=auth_headers(user)).status_code == 200
+
+
+def test_geocode_records_one_event_per_call_and_is_rate_limited(client, db, user, fake_opencage):
+    from app.models import GenerationEvent
+
+    for _ in range(2):  # the second call is a cache hit, and still counts
+        assert client.get("/geocode", params={"q": "Hull"}, headers=auth_headers(user)).status_code == 200
+    assert db.query(GenerationEvent).filter_by(user_id=user.id, kind="geocode").count() == 2
+    for _ in range(58):
+        db.add(GenerationEvent(user_id=user.id, kind="geocode"))
+    db.commit()
+    r = client.get("/geocode", params={"q": "Hull"}, headers=auth_headers(user))
+    assert r.status_code == 429 and r.json()["error"]["code"] == "rate_limited"
+
+
+def test_geocode_cache_is_thread_safe(fake_opencage, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.charts import geocode
+
+    monkeypatch.setattr(geocode, "CACHE_SIZE", 4)  # force constant hits, puts and evictions
+
+    def look(i):
+        return geocode.geocode(f"place {i % 12}")
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(look, range(400)))
+    assert all(r and r[0].tz == "America/New_York" for r in results)
+    assert len(geocode._cache) <= geocode.CACHE_SIZE
+
+
 def test_future_birth_date_422(client, user):
     r = _create(client, user, birth_date="2999-01-01")
     assert r.status_code == 422 and "birth_date" in r.json()["error"]["message"]

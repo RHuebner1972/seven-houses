@@ -106,3 +106,29 @@ def test_system_prompt_has_footer_and_guardrails():
     for word in ["medical", "legal", "financial", "pregnan", "<question>", "Synthesis"]:
         assert word in SYSTEM_PROMPT
     assert SYSTEM_PROMPT.rstrip().endswith(FOOTER)
+
+
+def test_polar_latitude_note_differs_from_unknown_time():
+    from app.readings.prompts import POLAR_LATITUDE_NOTE, UNKNOWN_TIME_NOTE
+
+    polar = compute_chart(_BIRTH, 80.0, 0.0, time_known=True)
+    assert polar.ascendant is None and polar.houses_unavailable_reason == "polar_latitude"
+    content = build_messages("three_card", _cards("three_card"), None, polar)[0]["content"]
+    assert POLAR_LATITUDE_NOTE in content and UNKNOWN_TIME_NOTE not in content
+
+    unknown = compute_chart(_BIRTH, 42.30, -70.91, time_known=False)
+    assert unknown.houses_unavailable_reason == "unknown_time"
+    content = build_messages("three_card", _cards("three_card"), None, unknown)[0]["content"]
+    assert UNKNOWN_TIME_NOTE in content and POLAR_LATITUDE_NOTE not in content
+
+    assert compute_chart(_BIRTH, 42.30, -70.91, time_known=True).houses_unavailable_reason is None
+
+
+def test_stored_chart_without_reason_uses_unknown_time_note():
+    from app.astro.chart import ChartData
+    from app.readings.prompts import UNKNOWN_TIME_NOTE
+
+    data = compute_chart(_BIRTH, 42.30, -70.91, time_known=False).model_dump(mode="json")
+    data.pop("houses_unavailable_reason")
+    content = build_messages("three_card", _cards("three_card"), None, ChartData.model_validate(data))[0]["content"]
+    assert UNKNOWN_TIME_NOTE in content

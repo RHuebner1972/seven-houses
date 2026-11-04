@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -27,6 +28,10 @@ class ChartData(BaseModel):
     ascendant: Placement | None
     mc: Placement | None
     aspects: list[Aspect]
+    # Why houses/Ascendant are missing: no birth time, or a birth time at a latitude
+    # where the Ascendant is not computed. None when houses are available (and on
+    # charts stored before this field existed).
+    houses_unavailable_reason: Literal["unknown_time", "polar_latitude"] | None = None
 
 
 def _placement(lon: float, asc_lon: float | None, retrograde: bool = False) -> Placement:
@@ -55,8 +60,15 @@ def compute_chart(utc: datetime, lat: float, lon: float, time_known: bool) -> Ch
         )
         for body, p in positions.items()
     }
+    if not time_known:
+        reason = "unknown_time"
+    elif angles is None:
+        reason = "polar_latitude"
+    else:
+        reason = None
     return ChartData(
         time_known=angles is not None,
+        houses_unavailable_reason=reason,
         planets=planets,
         ascendant=_placement(angles[0], asc_lon) if angles else None,
         mc=_placement(angles[1], asc_lon) if angles else None,

@@ -75,3 +75,22 @@ def test_client_has_bounded_timeouts_and_one_retry(fake_anthropic):
     assert isinstance(timeout, httpx.Timeout)
     assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (10.0, 60.0, 10.0, 10.0)
     assert fake_anthropic.client_kwargs["max_retries"] == 1
+
+
+def test_truncated_paid_reply_raises(fake_anthropic):
+    fake_anthropic.chunks = ["a", "b"]
+    fake_anthropic.stop_reason = "max_tokens"
+    with pytest.raises(GenerationError, match="truncated"):
+        list(stream_reading("m", [], max_tokens=10))
+
+
+def test_truncated_daily_reply_gets_footer(fake_anthropic):
+    from app.readings.prompts import FOOTER
+
+    fake_anthropic.chunks = ["Your card", " invites"]
+    fake_anthropic.stop_reason = "max_tokens"
+    assert list(stream_reading("m", [], 600, allow_truncation=True)) == [
+        "Your card", " invites", f"\n\n{FOOTER}"
+    ]
+    fake_anthropic.chunks = ["Your card.\n", FOOTER]
+    assert list(stream_reading("m", [], 600, allow_truncation=True)) == ["Your card.\n", FOOTER]

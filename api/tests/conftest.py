@@ -213,6 +213,7 @@ class FakeAnthropic:
         self.error: Exception | None = None
         self.last_kwargs: dict | None = None
         self.client_kwargs: dict | None = None
+        self.stop_reason: str = "end_turn"
 
     @property
     def last_messages(self):
@@ -247,7 +248,8 @@ def fake_anthropic(monkeypatch):
 
         def get_final_message(self):
             return SimpleNamespace(
-                usage=SimpleNamespace(input_tokens=fake.usage[0], output_tokens=fake.usage[1])
+                usage=SimpleNamespace(input_tokens=fake.usage[0], output_tokens=fake.usage[1]),
+                stop_reason=fake.stop_reason,
             )
 
     class _Messages:

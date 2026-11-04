@@ -1,3 +1,4 @@
+import threading
 from collections import OrderedDict
 
 import httpx
@@ -33,10 +34,13 @@ def _fetch(q: str) -> dict:
 
 CACHE_SIZE = 256
 _cache: OrderedDict[str, tuple[Place, ...]] = OrderedDict()
+# FastAPI runs sync routes in a threadpool; OrderedDict mutation is not thread-safe.
+_cache_lock = threading.Lock()
 
 
 def clear_cache() -> None:
-    _cache.clear()
+    with _cache_lock:
+        _cache.clear()
 
 
 def _lookup(normalised: str) -> tuple[Place, ...]:
@@ -61,12 +65,16 @@ def _lookup(normalised: str) -> tuple[Place, ...]:
 def geocode(q: str) -> list[Place]:
     """Cached by normalised query; empty results and failures are never cached."""
     key = q.strip().lower()
-    if key in _cache:
-        _cache.move_to_end(key)
-        return list(_cache[key])
-    places = _lookup(key)
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached is not None:
+            _cache.move_to_end(key)
+            return list(cached)
+    places = _lookup(key)  # network call outside the lock
     if places:
-        _cache[key] = places
-        while len(_cache) > CACHE_SIZE:
-            _cache.popitem(last=False)
+        with _cache_lock:
+            _cache[key] = places
+            _cache.move_to_end(key)
+            while len(_cache) > CACHE_SIZE:
+                _cache.popitem(last=False)
     return list(places)
