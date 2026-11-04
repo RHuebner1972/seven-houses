@@ -77,6 +77,29 @@ def test_too_early_birth_date_422(client, user):
     assert r.status_code == 422 and "birth_date" in r.json()["error"]["message"]
 
 
+def test_birth_date_before_ephemeris_coverage_422(client, user):
+    r = _create(client, user, birth_date="1849-06-01")
+    assert r.status_code == 422 and "birth_date" in r.json()["error"]["message"]
+
+
+def test_earliest_supported_birth_date_201(client, user):
+    r = _create(client, user, birth_date="1850-01-01", birth_time="00:30", tz="Asia/Tokyo")
+    assert r.status_code == 201
+
+
+def test_ephemeris_range_error_maps_to_422(client, user, monkeypatch):
+    from skyfield.errors import EphemerisRangeError
+
+    from app.charts import router
+
+    def out_of_range(*a, **kw):
+        raise EphemerisRangeError("out of range", None, None, None, None)
+
+    monkeypatch.setattr(router, "compute_chart", out_of_range)
+    r = _create(client, user)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "validation_failed"
+
+
 def test_bad_tz_and_bad_shape_422(client, user):
     assert _create(client, user, tz="Mars/Base").status_code == 422
     r = _create(client, user, lat=123)

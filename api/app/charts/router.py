@@ -5,10 +5,12 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
+from skyfield.errors import EphemerisRangeError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.astro.chart import compute_chart
+from app.astro.ephemeris import MAX_SUPPORTED_DATE, MIN_SUPPORTED_DATE
 from app.astro.time import to_utc
 from app.auth.deps import current_user
 from app.charts.geocode import geocode
@@ -18,7 +20,8 @@ from app.models import BirthProfile, Chart, User
 
 router = APIRouter()
 
-MIN_BIRTH_DATE = date(1800, 1, 1)
+MIN_BIRTH_DATE = MIN_SUPPORTED_DATE
+MAX_BIRTH_DATE = MAX_SUPPORTED_DATE
 
 
 class ProfileBody(BaseModel):
@@ -76,11 +79,16 @@ def create_profile(
     """
     if body.birth_date > datetime.now(UTC).date():
         raise ValidationFailed("birth_date: must not be in the future")
-    if body.birth_date < MIN_BIRTH_DATE:
-        raise ValidationFailed("birth_date: must be on or after 1800-01-01")
+    if not MIN_BIRTH_DATE <= body.birth_date <= MAX_BIRTH_DATE:
+        raise ValidationFailed(
+            f"birth_date: must be between {MIN_BIRTH_DATE.isoformat()} and {MAX_BIRTH_DATE.isoformat()}"
+        )
     time_known = body.birth_time is not None
     utc = to_utc(datetime.combine(body.birth_date, body.birth_time or time(12, 0)), body.tz)
-    chart = compute_chart(utc, body.lat, body.lon, time_known)
+    try:
+        chart = compute_chart(utc, body.lat, body.lon, time_known)
+    except EphemerisRangeError:  # belt and braces: the date bounds should prevent this
+        raise ValidationFailed("birth_date: outside the supported ephemeris range") from None
     profile = BirthProfile(
         user_id=user.id,
         name=body.name,
