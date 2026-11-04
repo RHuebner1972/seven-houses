@@ -3,6 +3,8 @@ import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
+import { Providers } from "@/components/providers";
+import { BalancePill } from "@/components/balance-pill";
 
 const display = Cormorant_Garamond({
   variable: "--font-display",
@@ -26,9 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
-        <Nav />
-        <main>{children}</main>
-        <Footer />
+        <Providers>
+          <Nav right={<BalancePill />} />
+          <main>{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

@@ -47,7 +47,7 @@ export function Nav({ right }: { right?: ReactNode }) {
           );
         })}
       </ul>
-      {right ? <div className="hidden md:ml-auto md:block">{right}</div> : null}
+      {right ? <div className="ml-auto shrink-0 px-2 md:px-0">{right}</div> : null}
     </nav>
   );
 }
