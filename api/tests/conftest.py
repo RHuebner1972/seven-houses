@@ -1,12 +1,12 @@
 import os
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
+from alembic import command
 from app.auth.jwt import mint_token
 from app.db import get_db
 from app.errors import NotFound
@@ -118,3 +118,197 @@ def fake_resend(monkeypatch):
         magic, "send_magic_link_email", lambda to, link: fake.sent.append({"to": to, "link": link})
     )
     return fake
+
+
+@pytest.fixture
+def other_user(db) -> User:
+    u = User()
+    db.add(u)
+    db.commit()
+    return u
+
+
+OPENCAGE_BODY = {
+    "results": [
+        {
+            "formatted": "Hull, MA, USA",
+            "geometry": {"lat": 42.30, "lng": -70.91},
+            "annotations": {"timezone": {"name": "America/New_York"}},
+        },
+        {"formatted": "No tz place", "geometry": {"lat": 1.0, "lng": 2.0}, "annotations": {}},
+    ]
+}
+
+
+class FakeOpencage:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self.error: Exception | None = None
+        self.body: dict | None = None
+
+
+@pytest.fixture
+def fake_opencage(monkeypatch):
+    import httpx
+
+    from app.charts import geocode
+
+    geocode.clear_cache()
+    fake = FakeOpencage()
+
+    def fake_get(self, url, params=None, **kw):
+        fake.calls.append({"url": url, "params": params})
+        if fake.error:
+            raise fake.error
+        return httpx.Response(200, json=fake.body if fake.body is not None else OPENCAGE_BODY, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    yield fake
+    geocode.clear_cache()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-snapshots", action="store_true", default=False, help="rewrite tests/snapshots files"
+    )
+
+
+@pytest.fixture
+def snapshot(request):
+    from pathlib import Path
+
+    update = request.config.getoption("--update-snapshots")
+    base = Path(__file__).parent / "snapshots"
+
+    def check(name: str) -> str:
+        path = base / name
+        if update:
+            return _Writer(path)
+        return path.read_text(encoding="utf-8")
+
+    return check
+
+
+class _Writer(str):
+    """Equal to anything; records the compared value to disk when update mode is on."""
+
+    def __new__(cls, path):
+        obj = super().__new__(cls, "")
+        obj.path = path
+        return obj
+
+    def __eq__(self, other):
+        self.path.write_text(other, encoding="utf-8")
+        return True
+
+    __hash__ = str.__hash__
+
+
+class FakeAnthropic:
+    def __init__(self):
+        self.chunks: list[str] = []
+        self.usage: tuple[int, int] = (0, 0)
+        self.raise_on_stream: Exception | None = None
+        self.raise_after_chunks: int | None = None
+        self.error: Exception | None = None
+        self.last_kwargs: dict | None = None
+        self.client_kwargs: dict | None = None
+        self.stop_reason: str = "end_turn"
+
+    @property
+    def last_messages(self):
+        return self.last_kwargs["messages"] if self.last_kwargs else None
+
+
+@pytest.fixture
+def fake_anthropic(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.readings import generator
+
+    fake = FakeAnthropic()
+
+    class _Stream:
+        def __enter__(self):
+            if fake.raise_on_stream is not None:
+                raise fake.raise_on_stream
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @property
+        def text_stream(self):
+            for i, chunk in enumerate(fake.chunks):
+                if fake.raise_after_chunks is not None and i >= fake.raise_after_chunks:
+                    raise fake.error
+                yield chunk
+            if fake.raise_after_chunks is not None and fake.raise_after_chunks >= len(fake.chunks):
+                raise fake.error
+
+        def get_final_message(self):
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=fake.usage[0], output_tokens=fake.usage[1]),
+                stop_reason=fake.stop_reason,
+            )
+
+    class _Messages:
+        def stream(self, **kwargs):
+            fake.last_kwargs = kwargs
+            return _Stream()
+
+    class _Client:
+        def __init__(self, **kwargs):
+            fake.client_kwargs = kwargs
+            self.messages = _Messages()
+
+    monkeypatch.setattr(generator.anthropic, "Anthropic", _Client)
+    return fake
+
+
+@pytest.fixture
+def user_with_credits(db, user):
+    """Factory: user_with_credits(n) grants `n` credits to `user`, commits, returns the user."""
+    from uuid import uuid4
+
+    from app.ledger.service import credit
+
+    def grant(n: int) -> User:
+        credit(db, user.id, n, reason="grant", reference_id=f"grant-{uuid4()}")
+        db.commit()
+        return user
+
+    return grant
+
+
+@pytest.fixture
+def profile(db, user):
+    """A BirthProfile with a time-known Chart for `user` (Hull, MA)."""
+    from datetime import UTC, datetime
+
+    from app.astro.chart import compute_chart
+    from app.models import BirthProfile, Chart
+
+    utc = datetime(1990, 6, 15, 16, 30, tzinfo=UTC)
+    data = compute_chart(utc, 42.30, -70.91, True)
+    p = BirthProfile(
+        user_id=user.id,
+        name="Me",
+        birth_datetime_utc=utc,
+        birth_tz="America/New_York",
+        lat=42.30,
+        lon=-70.91,
+        place_label="Hull, MA, USA",
+        time_known=True,
+    )
+    db.add(p)
+    db.flush()
+    db.add(
+        Chart(
+            birth_profile_id=p.id,
+            data=data.model_dump(mode="json"),
+            engine_version=data.engine_version,
+        )
+    )
+    db.commit()
+    return p

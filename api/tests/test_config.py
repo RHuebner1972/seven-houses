@@ -32,3 +32,18 @@ def test_cors_origins_json_and_list():
 def test_cors_origins_from_env(monkeypatch):
     monkeypatch.setenv("CORS_ORIGINS", "https://a.com,https://b.com")
     assert Settings().cors_origins == ["https://a.com", "https://b.com"]
+
+
+def test_prod_rejects_short_jwt_secret():
+    with pytest.raises(ValueError, match="32"):
+        Settings(env="prod", jwt_secret="x" * 31)
+
+
+def test_short_jwt_secret_allowed_outside_prod():
+    assert Settings(env="dev", jwt_secret="short").jwt_secret == "short"
+
+
+@pytest.mark.parametrize("amount", [0, -5])
+def test_credit_products_must_be_positive(amount):
+    with pytest.raises(ValueError, match="sh_bad"):
+        Settings(credit_products={"sh_ok": 5, "sh_bad": amount})

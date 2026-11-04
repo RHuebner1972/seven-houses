@@ -16,6 +16,7 @@ def test_tables_exist(db):
         "daily_draws",
         "spread_prices",
         "ip_events",
+        "generation_events",
     } <= names
 
 

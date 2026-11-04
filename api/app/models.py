@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -98,6 +99,11 @@ class Reading(Base):
     token_usage: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = _created_at()
+    # Bumped on every write; a `pending` reading whose updated_at is older than the
+    # stale window (app.readings.service.STALE_PENDING) is abandoned.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class CreditLedger(Base):
@@ -146,4 +152,16 @@ class MagicToken(Base):
     user_id: Mapped[uuid.UUID] = _user_fk()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class GenerationEvent(Base):
+    """One row per started generation (or geocode call); the per-user rate limit counts these."""
+
+    __tablename__ = "generation_events"
+    __table_args__ = (Index("ix_generation_events_user_created", "user_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = _user_fk()
+    kind: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()

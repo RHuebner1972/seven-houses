@@ -29,8 +29,8 @@ def test_google_existing_identity_returns_existing_user(
     assert r.status_code == 200
     assert r.json()["user_id"] == str(other_user_google_g1.id)
     assert verify_token(r.json()["token"]).user_id == other_user_google_g1.id
-    db.refresh(user)
-    assert user.email is None  # abandoned, untouched
+    db.expire_all()
+    assert db.get(User, user.id) is None  # anonymous user merged into the owner and removed
 
 
 def test_google_existing_email_returns_existing_user(client, db, user, fake_google):
@@ -94,13 +94,53 @@ def test_magic_request_requires_auth(client, fake_resend):
 def test_magic_verify_links_and_is_single_use(client, db, user, fake_resend):
     client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
     token = fake_resend.extract_token()
-    r = client.post("/auth/magic/verify", json={"token": token})
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
     assert r.status_code == 200
     assert r.json()["user_id"] == str(user.id)
     assert verify_token(r.json()["token"]).anon is False
     db.refresh(user)
     assert (user.email, user.auth_provider, user.auth_subject) == ("a@x.io", "email", None)
     assert client.post("/auth/magic/verify", json={"token": token}).status_code == 401
+
+
+def test_magic_verify_without_bearer_creates_new_user_not_requester(client, db, user, fake_resend):
+    """Pre-signup takeover guard: someone who obtains the link but not the
+    requesting device's token must not be linked into the requester's account."""
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    r = client.post("/auth/magic/verify", json={"token": fake_resend.extract_token()})
+    assert r.status_code == 200
+    new_id = r.json()["user_id"]
+    assert new_id != str(user.id)
+    new = db.get(User, verify_token(r.json()["token"]).user_id)
+    assert (new.email, new.auth_provider, new.auth_subject) == ("a@x.io", "email", None)
+    db.refresh(user)
+    assert user.email is None
+    me = client.get("/me", headers=auth_headers(user)).json()
+    assert me["user_id"] == str(user.id) and me["anon"] is True and me["email"] is None
+
+
+def test_magic_verify_with_other_users_bearer_is_401_and_unspent(
+    client, db, user, other_user, fake_resend
+):
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    token = fake_resend.extract_token()
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(other_user))
+    assert r.status_code == 401
+    db.refresh(other_user)
+    db.refresh(user)
+    assert other_user.email is None and user.email is None
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(user.id)
+
+
+def test_magic_verify_with_invalid_bearer_is_401(client, user, fake_resend):
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    r = client.post(
+        "/auth/magic/verify",
+        json={"token": fake_resend.extract_token()},
+        headers={"Authorization": "Bearer nope"},
+    )
+    assert r.status_code == 401
 
 
 def test_magic_verify_unknown_token(client):
@@ -174,7 +214,9 @@ def test_linked_user_not_overwritten_by_other_identity(client, db, fake_resend):
     db.add(g)
     db.commit()
     client.post("/auth/magic/request", json={"email": "other@x.io"}, headers=auth_headers(g))
-    r = client.post("/auth/magic/verify", json={"token": fake_resend.extract_token()})
+    r = client.post(
+        "/auth/magic/verify", json={"token": fake_resend.extract_token()}, headers=auth_headers(g)
+    )
     assert r.status_code == 422
     db.refresh(g)
     assert (g.email, g.auth_provider, g.auth_subject) == ("g@x.io", "google", "g9")
@@ -189,3 +231,193 @@ def test_magic_send_failure_still_202_and_no_row(client, db, user, monkeypatch, 
     assert r.status_code == 202
     assert db.scalars(select(MagicToken)).all() == []
     assert "Failed to send magic link email" in caplog.text
+
+
+# --- merging anonymous data on link -----------------------------------------
+
+
+def _anon_with_data(db, user, profile, fake_anthropic):
+    """`user` (anonymous) with a profile, a completed paid reading (1 debited), 3
+    credits left, and daily draws on 2026-11-01 and 2026-11-02."""
+    from datetime import date
+    from uuid import uuid4
+
+    from app.ledger.service import credit
+    from app.models import DailyDraw, Reading
+    from app.readings.service import run_generation, start_reading
+
+    credit(db, user.id, 4, "grant", f"grant-{uuid4()}")
+    db.commit()
+    fake_anthropic.chunks = ["ok"]
+    reading = start_reading(db, user, "three_card", None, profile.id)
+    list(run_generation(db, reading))
+    card = {"position": "today", "card_id": "the_fool", "reversed": False}
+    for day in (1, 2):
+        daily = Reading(user_id=user.id, spread_type="daily", cards=[card], status="complete")
+        db.add(daily)
+        db.flush()
+        db.add(DailyDraw(user_id=user.id, local_date=date(2026, 11, day), card=card, reading_id=daily.id))
+    db.commit()
+    return reading
+
+
+def test_google_link_merges_anonymous_data_into_existing_owner(
+    client, db, user, profile, other_user_google_g1, fake_google, fake_anthropic
+):
+    from datetime import date
+    from uuid import uuid4
+
+    from sqlalchemy import func
+
+    from app.ledger.service import balance, credit
+    from app.models import BirthProfile, CreditLedger, DailyDraw, GenerationEvent, Reading
+    from app.ratelimit import record_generation
+
+    owner = other_user_google_g1
+    reading = _anon_with_data(db, user, profile, fake_anthropic)
+    record_generation(db, user.id, "reading")
+    credit(db, owner.id, 2, "grant", f"grant-{uuid4()}")
+    card = {"position": "today", "card_id": "the_sun", "reversed": False}
+    db.add(DailyDraw(user_id=owner.id, local_date=date(2026, 11, 1), card=card))
+    db.commit()
+    assert balance(db, user.id) == 3
+    total_before = db.scalar(select(func.sum(CreditLedger.delta)))
+
+    r = client.post("/auth/google", json={"id_token": "x"}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(owner.id)
+
+    db.expire_all()
+    assert db.get(User, user.id) is None
+    assert db.get(BirthProfile, profile.id).user_id == owner.id
+    assert db.get(Reading, reading.id).user_id == owner.id
+    assert db.query(Reading).filter_by(user_id=owner.id).count() == 3  # paid + 2 daily
+    assert db.query(GenerationEvent).one().user_id == owner.id
+    assert balance(db, owner.id) == 2 + 3
+    assert db.scalar(select(func.sum(CreditLedger.delta))) == total_before
+    assert db.query(CreditLedger).filter_by(reference_id=str(reading.id)).one().user_id == owner.id
+    transfer_in = db.query(CreditLedger).filter_by(reason="transfer_in").one()
+    assert (transfer_in.delta, transfer_in.reference_id) == (4, f"transfer:{user.id}:in")
+    draws = {(d.local_date.day, d.card["card_id"]) for d in db.query(DailyDraw).filter_by(user_id=owner.id)}
+    assert draws == {(1, "the_sun"), (2, "the_fool")}  # owner's Nov 1 kept, anon's Nov 2 moved
+    assert client.get("/me", headers=auth_headers(user)).status_code == 401
+
+
+def test_merge_failure_leaves_both_users_untouched(
+    db, engine, user, profile, other_user_google_g1, fake_anthropic, monkeypatch
+):
+    from sqlalchemy.orm import Session
+
+    from app.ledger.service import balance
+    from app.models import BirthProfile, Reading
+
+    reading = _anon_with_data(db, user, profile, fake_anthropic)
+
+    def boom(*a, **kw):
+        raise RuntimeError("mid-merge failure")
+
+    monkeypatch.setattr(linking, "balance", boom)  # after profiles/readings were re-pointed
+    with pytest.raises(RuntimeError):
+        linking.link_and_commit(db, user, "google", "g1", "a@x.io")
+    with Session(engine) as other:
+        assert other.get(User, user.id) is not None
+        assert other.get(BirthProfile, profile.id).user_id == user.id
+        assert other.get(Reading, reading.id).user_id == user.id
+        assert balance(other, user.id) == 3 and balance(other, other_user_google_g1.id) == 0
+
+
+def test_magic_verify_with_bearer_merges_into_existing_owner(
+    client, db, user, profile, fake_resend
+):
+    from app.models import BirthProfile
+
+    existing = User(email="a@x.io", auth_provider="email")
+    db.add(existing)
+    db.commit()
+    client.post("/auth/magic/request", json={"email": "a@x.io"}, headers=auth_headers(user))
+    token = fake_resend.extract_token()
+    r = client.post("/auth/magic/verify", json={"token": token}, headers=auth_headers(user))
+    assert r.status_code == 200 and r.json()["user_id"] == str(existing.id)
+    db.expire_all()
+    assert db.get(User, user.id) is None
+    assert db.get(BirthProfile, profile.id).user_id == existing.id
+    assert client.post("/auth/magic/verify", json={"token": token}).status_code == 401
+
+
+def test_merge_locks_anonymous_user_so_concurrent_debit_waits(
+    db, db_url, user, other_user_google_g1
+):
+    """Deterministic via pg_locks: while the merge (paused after taking its lock) is
+    open, a debit for the anonymous user blocks on the users row; once the merge
+    commits the user is gone and the debit fails with InsufficientCredits."""
+    import threading
+    import time
+    from uuid import uuid4
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    from app.errors import InsufficientCredits
+    from app.ledger.service import credit, debit_for_reading
+
+    user_id, owner_id = user.id, other_user_google_g1.id
+    credit(db, user_id, 3, "grant", f"grant-{uuid4()}")
+    db.commit()
+    engine = create_engine(db_url)
+    locked, release = threading.Event(), threading.Event()
+    outcome: dict = {}
+    real_balance = linking.balance
+
+    def paused_balance(session, user_id):
+        locked.set()  # merge_anonymous_into has taken its row lock by now
+        assert release.wait(timeout=10)
+        return real_balance(session, user_id)
+
+    def merge():
+        with Session(engine) as s:
+            linking.link_and_commit(s, s.get(User, user_id), "google", "g1", "a@x.io")
+
+    def debit():
+        with Session(engine) as s:
+            outcome["pid"] = s.execute(text("select pg_backend_pid()")).scalar()
+            try:
+                debit_for_reading(s, user_id, 1, uuid4())
+                s.commit()
+                outcome["result"] = "ok"
+            except InsufficientCredits:
+                s.rollback()
+                outcome["result"] = "insufficient"
+
+    try:
+        orig = linking.balance
+        linking.balance = paused_balance
+        t_merge = threading.Thread(target=merge)
+        t_merge.start()
+        assert locked.wait(timeout=10)
+        t_debit = threading.Thread(target=debit)
+        t_debit.start()
+        waiting = False
+        with engine.connect() as watcher:
+            for _ in range(200):
+                pid = outcome.get("pid")
+                if pid is not None and watcher.execute(
+                    text("select count(*) from pg_locks where pid = :pid and not granted"), {"pid": pid}
+                ).scalar():
+                    waiting = True
+                    break
+                if "result" in outcome:
+                    break
+                time.sleep(0.025)
+        release.set()
+        t_merge.join(timeout=10)
+        t_debit.join(timeout=10)
+    finally:
+        linking.balance = orig
+        release.set()
+        engine.dispose()
+    assert waiting, f"debit did not wait for the merge lock (outcome={outcome})"
+    assert outcome["result"] == "insufficient"
+    db.expire_all()
+    assert db.get(User, user_id) is None
+    from app.ledger.service import balance
+
+    assert balance(db, owner_id) == 3

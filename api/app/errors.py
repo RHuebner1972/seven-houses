@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
@@ -25,6 +26,11 @@ class InsufficientCredits(AppError):
         super().__init__(402, "insufficient_credits", message)
 
 
+class Conflict(AppError):
+    def __init__(self, code: str, message: str):
+        super().__init__(409, code, message)
+
+
 class RateLimited(AppError):
     def __init__(self, message: str):
         super().__init__(429, "rate_limited", message)
@@ -35,6 +41,11 @@ class ValidationFailed(AppError):
         super().__init__(422, "validation_failed", message)
 
 
+class ServiceUnavailable(AppError):
+    def __init__(self, code: str, message: str):
+        super().__init__(503, code, message)
+
+
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
@@ -42,5 +53,16 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     )
 
 
+async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    message = "; ".join(
+        f"{'.'.join(str(p) for p in e['loc'] if p != 'body')}: {e['msg']}" for e in exc.errors()
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"error": {"code": "validation_failed", "message": message}},
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, app_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_handler)

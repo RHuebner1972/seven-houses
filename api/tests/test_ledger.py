@@ -135,3 +135,33 @@ def test_concurrent_debit_only_one_wins(db, db_url, user):
         select(func.count()).select_from(CreditLedger).where(CreditLedger.reason == "reading")
     )
     assert n == 1
+
+
+def test_debit_with_explicit_reference_id(db, user):
+    credit(db, user.id, 2, "purchase", "tx1")
+    rid = uuid4()
+    debit_for_reading(db, user.id, 1, rid)
+    debit_for_reading(db, user.id, 1, rid, reference_id=f"{rid}:retry1")
+    db.commit()
+    refs = set(
+        db.scalars(select(CreditLedger.reference_id).where(CreditLedger.reason == "reading"))
+    )
+    assert refs == {str(rid), f"{rid}:retry1"}
+    assert balance(db, user.id) == 0
+
+
+def test_refund_with_explicit_reference_id_is_idempotent(db, user):
+    credit(db, user.id, 2, "purchase", "tx1")
+    rid = uuid4()
+    debit_for_reading(db, user.id, 1, rid)
+    debit_for_reading(db, user.id, 1, rid, reference_id=f"{rid}:retry1")
+    db.commit()
+    assert refund_reading(db, user.id, 1, rid) is True
+    assert refund_reading(db, user.id, 1, rid, reference_id=f"{rid}:retry1:refund") is True
+    assert refund_reading(db, user.id, 1, rid, reference_id=f"{rid}:retry1:refund") is False
+    db.commit()
+    assert balance(db, user.id) == 2
+    refs = set(
+        db.scalars(select(CreditLedger.reference_id).where(CreditLedger.reason == "refund"))
+    )
+    assert refs == {f"{rid}:refund", f"{rid}:retry1:refund"}

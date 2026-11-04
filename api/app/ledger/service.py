@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.errors import InsufficientCredits
 from app.models import CreditLedger, User
 
-
 _REFERENCE_UNIQUE = "credit_ledger_reference_id_key"
 
 
@@ -43,11 +42,14 @@ def credit(db: Session, user_id: UUID, amount: int, reason: str, reference_id: s
     return True
 
 
-def debit_for_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -> None:
+def debit_for_reading(
+    db: Session, user_id: UUID, cost: int, reading_id: UUID, reference_id: str | None = None
+) -> None:
     """Debit `cost` credits atomically. Runs in the caller's transaction (no commit).
 
     The user row is locked FOR UPDATE before the balance is read, so concurrent
-    debits for one user serialize and cannot overdraw.
+    debits for one user serialize and cannot overdraw. `reference_id` defaults to
+    `str(reading_id)`; pass a distinct one (e.g. a retry reference) to debit again.
     """
     if cost <= 0:
         raise ValueError("debit cost must be positive")
@@ -56,15 +58,31 @@ def debit_for_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -
         raise InsufficientCredits("Not enough credits")
     db.add(
         CreditLedger(
-            user_id=user_id, delta=-cost, reason="reading", reference_id=str(reading_id)
+            user_id=user_id,
+            delta=-cost,
+            reason="reading",
+            reference_id=reference_id or str(reading_id),
         )
     )
     db.flush()
 
 
-def refund_reading(db: Session, user_id: UUID, cost: int, reading_id: UUID) -> bool:
+def debit_amount(db: Session, reference_id: str) -> int | None:
+    """Credits taken by the reading debit with this reference, or None if there is none."""
+    delta = db.scalar(
+        select(CreditLedger.delta).where(
+            CreditLedger.reference_id == reference_id, CreditLedger.reason == "reading"
+        )
+    )
+    return None if delta is None else -delta
+
+
+def refund_reading(
+    db: Session, user_id: UUID, cost: int, reading_id: UUID, reference_id: str | None = None
+) -> bool:
+    """Idempotent refund; `reference_id` defaults to f"{reading_id}:refund". Does not commit."""
     if cost < 0:
         raise ValueError("refund cost must not be negative")
     if cost == 0:
         return False
-    return credit(db, user_id, cost, "refund", f"{reading_id}:refund")
+    return credit(db, user_id, cost, "refund", reference_id or f"{reading_id}:refund")

@@ -1,10 +1,15 @@
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 
 from skyfield.api import Loader, load_file
 
 from app.config import get_settings
+
+# de440s covers 1849-12-26 .. 2150-01-22; birth dates are kept inside it with margin.
+# Outside it Skyfield raises skyfield.errors.EphemerisRangeError.
+MIN_SUPPORTED_DATE = date(1850, 1, 1)
+MAX_SUPPORTED_DATE = date(2149, 12, 31)
 
 BODIES = [
     "sun", "moon", "mercury", "venus", "mars", "jupiter",

@@ -1,0 +1,340 @@
+"""Reading lifecycle: debit -> draw -> generate -> complete, or fail -> refund.
+
+Invariant: every debit for a reading is matched by exactly one refund, of the
+debited amount, unless that generation attempt completed. Debit references are `str(reading.id)` for the first
+attempt and f"{reading.id}:retry{n}" for retry n; the matching refund reference is
+the debit reference plus ":refund". Both are unique in the ledger, so refunds are
+idempotent.
+"""
+
+import logging
+import time
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+from sqlalchemy import case, func, select, update
+from sqlalchemy.orm import Session
+
+from app.astro.chart import ChartData
+from app.config import get_settings
+from app.errors import InsufficientCredits, NotFound, ValidationFailed
+from app.ledger.service import debit_amount, debit_for_reading, refund_reading
+from app.models import BirthProfile, Chart, Reading, SpreadPrice, User
+from app.readings.generator import GenerationError, stream_reading
+from app.readings.prompts import QUESTION_MAX_CHARS, build_messages
+from app.tarot.draw import DrawnCard, draw
+from app.tarot.spreads import SPREADS
+
+logger = logging.getLogger(__name__)
+
+PERSIST_EVERY_CHUNKS = 20
+# Wall-clock budget for one generation, including a drain after disconnect. Checked
+# between chunks, so one in-flight read (<= 60 s client read timeout) can overrun it;
+# 220 + 60 stays under Vercel's 300 s maxDuration.
+GENERATION_DEADLINE_SECONDS = 220.0
+_clock = time.monotonic
+# A pending reading not written for this long has no live stream behind it (the
+# generation deadline is well inside it); it may be failed and refunded.
+STALE_PENDING = timedelta(minutes=6)
+
+
+def _cost(db: Session, spread_type: str) -> int:
+    return db.get(SpreadPrice, spread_type).credits
+
+
+def _retries(reading: Reading) -> int:
+    return (reading.token_usage or {}).get("retries", 0)
+
+
+def current_attempt(reading: Reading) -> int:
+    """The generation attempt a reading is on: 0 for the first, n for retry n."""
+    return _retries(reading)
+
+
+def _debit_reference(reading_id: UUID, retry: int) -> str:
+    return f"{reading_id}:retry{retry}" if retry else str(reading_id)
+
+
+def sweep_stale_pending(db: Session, user_id: UUID, older_than: timedelta = STALE_PENDING) -> int:
+    """Fail and refund the user's readings left `pending` by a dead stream.
+
+    A live generation always writes within its deadline (< STALE_PENDING), so a
+    pending reading untouched for longer has nothing behind it. Returns the count.
+    """
+    cutoff = datetime.now(UTC) - older_than
+    rows = db.execute(
+        select(Reading.id, Reading.token_usage).where(
+            Reading.user_id == user_id, Reading.status == "pending", Reading.updated_at < cutoff
+        )
+    ).all()
+    # The fail re-checks status, staleness and attempt in one conditional UPDATE, so
+    # a reading written (or retried) between this select and the fail is left alone.
+    swept = sum(
+        fail_if_pending(
+            db, row.id, attempt=(row.token_usage or {}).get("retries", 0), stale_before=cutoff
+        )
+        for row in rows
+    )
+    if swept:
+        logger.warning("user %s: failed and refunded %d stale pending reading(s)", user_id, swept)
+    return swept
+
+
+def start_reading(
+    db: Session,
+    user: User,
+    spread_type: str,
+    question: str | None,
+    profile_id: UUID | None,
+) -> Reading:
+    """Validate, draw, create a pending reading and debit its cost in one transaction."""
+    sweep_stale_pending(db, user.id)
+    if spread_type not in SPREADS or spread_type == "daily":
+        raise ValidationFailed(f"spread_type: unknown or not purchasable: {spread_type!r}")
+    question = (question or "").strip() or None
+    if question is not None and len(question) > QUESTION_MAX_CHARS:
+        raise ValidationFailed(f"question: must be at most {QUESTION_MAX_CHARS} characters")
+
+    chart_id = None
+    if profile_id is not None:
+        profile = db.scalar(
+            select(BirthProfile).where(
+                BirthProfile.id == profile_id, BirthProfile.user_id == user.id
+            )
+        )
+        if profile is None:
+            raise NotFound("Birth profile not found")
+        chart_id = db.scalar(select(Chart.id).where(Chart.birth_profile_id == profile.id))
+
+    cost = _cost(db, spread_type)
+    reading = Reading(
+        user_id=user.id,
+        spread_type=spread_type,
+        cards=[c.model_dump() for c in draw(spread_type)],
+        question=question,
+        chart_id=chart_id,
+        status="pending",
+    )
+    try:
+        db.add(reading)
+        db.flush()
+        if cost > 0:  # a zero-priced (free/promo) spread takes no debit
+            debit_for_reading(db, user.id, cost, reading.id)
+    except InsufficientCredits:
+        db.rollback()
+        raise
+    db.commit()
+    return reading
+
+
+def run_generation(
+    db: Session, reading: Reading, model: str | None = None, max_tokens: int = 2000
+) -> Iterator[str]:
+    """Stream the reading text; on completion mark it complete (the debit is kept).
+
+    Failure policy:
+    - A generation error or any unexpected exception: mark failed and refund.
+    - The caller closing the generator (client disconnect), "drain-and-complete":
+      if no chunk had been handed out yet, fail and refund; otherwise finish the
+      generation without yielding, persist it as complete and keep the debit, so
+      the user finds the full reading in their history. The drain honours the
+      generation deadline; if it fails or runs out of time, fail and refund with
+      the partial text.
+    """
+    if reading.status != "pending":
+        raise ValidationFailed(f"reading is {reading.status}, not pending")
+    settings = get_settings()
+    if model is None:
+        model = settings.model_daily if reading.spread_type == "daily" else settings.model_paid
+    deadline = _clock() + GENERATION_DEADLINE_SECONDS
+    attempt = _retries(reading)
+    buffer = ""
+    delivered = 0
+    stream = None
+    try:
+        chart = None
+        if reading.chart_id is not None:
+            row = db.get(Chart, reading.chart_id)
+            if row is not None:
+                chart = ChartData.model_validate(row.data)
+        cards = [DrawnCard.model_validate(c) for c in reading.cards]
+        messages = build_messages(reading.spread_type, cards, reading.question, chart)
+
+        stream = stream_reading(
+            model, messages, max_tokens, allow_truncation=reading.spread_type == "daily"
+        )
+        while True:
+            try:
+                chunk = next(stream)
+            except StopIteration as stop:
+                usage = stop.value
+                break
+            if _clock() > deadline:
+                raise GenerationError("generation deadline exceeded")
+            buffer += chunk
+            delivered += 1
+            yield chunk
+            if delivered % PERSIST_EVERY_CHUNKS == 0:
+                reading.text = buffer
+                db.commit()
+
+        _complete(db, reading, buffer, model, usage)
+    except GeneratorExit:
+        # Client disconnected; a generator must not yield after GeneratorExit.
+        if delivered == 0:
+            _close(stream)
+            _fail_and_refund(db, reading, buffer, attempt=attempt)
+            return
+        try:
+            while True:
+                if _clock() > deadline:
+                    raise GenerationError("generation deadline exceeded")
+                try:
+                    buffer += next(stream)
+                except StopIteration as stop:
+                    usage = stop.value
+                    break
+            _complete(db, reading, buffer, model, usage)
+        except Exception:
+            logger.warning("reading %s: drain after disconnect failed; refunding", reading.id)
+            _close(stream)
+            _fail_and_refund(db, reading, buffer, attempt=attempt)
+        return
+    except Exception:
+        # GenerationError and anything unexpected: never keep credits for an
+        # undelivered reading.
+        _close(stream)
+        _fail_and_refund(db, reading, buffer, attempt=attempt)
+        raise
+
+
+def _complete(db: Session, reading: Reading, text: str, model: str, usage) -> None:
+    """Persist the finished reading, but only if it is still pending: a reading that
+    was failed and refunded meanwhile (e.g. by a stale sweep) must not turn complete."""
+    token_usage = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+    if _retries(reading):
+        token_usage["retries"] = _retries(reading)
+    done = db.execute(
+        update(Reading)
+        .where(Reading.id == reading.id, Reading.status == "pending")
+        .values(status="complete", text=text, model=model, token_usage=token_usage)
+    ).rowcount
+    db.commit()
+    db.refresh(reading)
+    if not done:
+        logger.warning("reading %s: finished but no longer pending; left %s", reading.id, reading.status)
+
+
+def _close(stream) -> None:
+    if stream is not None:
+        stream.close()
+
+
+def _fail_and_refund(
+    db: Session,
+    reading: Reading | None,
+    partial_text: str = "",
+    *,
+    reading_id: UUID | None = None,
+    attempt: int | None = None,
+    stale_before: datetime | None = None,
+) -> bool:
+    """Mark the reading failed and refund its current attempt's debit; return whether it did.
+
+    The pending -> failed transition is one conditional UPDATE (still pending, and,
+    when given, still on `attempt` and not written since `stale_before`); the refund
+    is issued only if that UPDATE matched, so a racing completion, retry or write
+    wins and nothing is refunded.
+    """
+    reading_id = reading.id if reading is not None else reading_id
+    db.rollback()  # the session may be mid-transaction
+    conditions = [Reading.id == reading_id, Reading.status == "pending"]
+    if attempt is not None:
+        conditions.append(func.coalesce(Reading.token_usage["retries"].as_integer(), 0) == attempt)
+    if stale_before is not None:
+        conditions.append(Reading.updated_at < stale_before)
+    values = {"status": "failed"}
+    if partial_text:
+        values["text"] = case(
+            (func.length(func.coalesce(Reading.text, "")) < len(partial_text), partial_text),
+            else_=Reading.text,
+        )
+    failed = db.execute(
+        update(Reading)
+        .where(*conditions)
+        .values(**values)
+        .returning(Reading.user_id, Reading.token_usage)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if failed is not None:
+        # Refund exactly what this attempt's debit took (prices may have changed since);
+        # an attempt with no debit (free spread, daily) refunds nothing.
+        debit_reference = _debit_reference(reading_id, (failed.token_usage or {}).get("retries", 0))
+        amount = debit_amount(db, debit_reference)
+        if amount:
+            refund_reading(
+                db, failed.user_id, amount, reading_id, reference_id=f"{debit_reference}:refund"
+            )
+    db.commit()
+    if reading is not None:
+        db.refresh(reading)
+    elif failed is not None:
+        # The UPDATE bypassed the identity map; refresh any loaded copy of the row.
+        db.get(Reading, reading_id, populate_existing=True)
+    return failed is not None
+
+
+def fail_if_pending(
+    db: Session,
+    reading_id: UUID,
+    attempt: int | None = None,
+    stale_before: datetime | None = None,
+) -> bool:
+    """Fail and refund the reading if it is still pending; return whether it did.
+
+    A safety net for streams that end before `run_generation` started (its own
+    failure handling only exists once the generator is running), and the fail step
+    of stale sweeps. Rolls back first, so it is safe after an aborted transaction.
+    When `attempt` (the retry count the caller started or observed) is given, a
+    reading that has since moved on to a later attempt is left alone; when
+    `stale_before` is given, one written since then is left alone.
+    """
+    return _fail_and_refund(
+        db, None, reading_id=reading_id, attempt=attempt, stale_before=stale_before
+    )
+
+
+def retry_reading(db: Session, user: User, reading_id: UUID) -> Reading:
+    """Re-debit a failed reading and reset it to pending, keeping its cards.
+
+    A stale pending reading (see `sweep_stale_pending`) is failed first, so it can
+    be retried too.
+    """
+    sweep_stale_pending(db, user.id)
+    reading = db.scalar(
+        select(Reading).where(Reading.id == reading_id, Reading.user_id == user.id)
+    )
+    if reading is None:
+        raise NotFound("Reading not found")
+    if reading.spread_type == "daily":
+        raise ValidationFailed("daily readings cannot be retried; request the daily card again")
+    if reading.status != "failed":
+        raise ValidationFailed(f"reading is {reading.status}; only failed readings can be retried")
+
+    retry = _retries(reading) + 1
+    cost = _cost(db, reading.spread_type)
+    try:
+        if cost > 0:
+            debit_for_reading(
+                db, user.id, cost, reading.id, reference_id=_debit_reference(reading.id, retry)
+            )
+    except InsufficientCredits:
+        db.rollback()
+        raise
+    reading.text = ""
+    reading.status = "pending"
+    reading.model = None
+    reading.token_usage = {**(reading.token_usage or {}), "retries": retry}
+    db.commit()
+    return reading
