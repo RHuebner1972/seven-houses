@@ -67,6 +67,16 @@ def debit_for_reading(
     db.flush()
 
 
+def debit_amount(db: Session, reference_id: str) -> int | None:
+    """Credits taken by the reading debit with this reference, or None if there is none."""
+    delta = db.scalar(
+        select(CreditLedger.delta).where(
+            CreditLedger.reference_id == reference_id, CreditLedger.reason == "reading"
+        )
+    )
+    return None if delta is None else -delta
+
+
 def refund_reading(
     db: Session, user_id: UUID, cost: int, reading_id: UUID, reference_id: str | None = None
 ) -> bool:

@@ -1,7 +1,7 @@
 """Reading lifecycle: debit -> draw -> generate -> complete, or fail -> refund.
 
-Invariant: every debit for a reading is matched by exactly one refund unless that
-generation attempt completed. Debit references are `str(reading.id)` for the first
+Invariant: every debit for a reading is matched by exactly one refund, of the
+debited amount, unless that generation attempt completed. Debit references are `str(reading.id)` for the first
 attempt and f"{reading.id}:retry{n}" for retry n; the matching refund reference is
 the debit reference plus ":refund". Both are unique in the ledger, so refunds are
 idempotent.
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.astro.chart import ChartData
 from app.config import get_settings
 from app.errors import InsufficientCredits, NotFound, ValidationFailed
-from app.ledger.service import debit_for_reading, refund_reading
+from app.ledger.service import debit_amount, debit_for_reading, refund_reading
 from app.models import BirthProfile, Chart, Reading, SpreadPrice, User
 from app.readings.generator import GenerationError, stream_reading
 from app.readings.prompts import QUESTION_MAX_CHARS, build_messages
@@ -111,7 +111,8 @@ def start_reading(
     try:
         db.add(reading)
         db.flush()
-        debit_for_reading(db, user.id, cost, reading.id)
+        if cost > 0:  # a zero-priced (free/promo) spread takes no debit
+            debit_for_reading(db, user.id, cost, reading.id)
     except InsufficientCredits:
         db.rollback()
         raise
@@ -226,15 +227,13 @@ def _fail_and_refund(db: Session, reading: Reading, partial_text: str = "") -> N
     reading.status = "failed"
     if len(partial_text) > len(reading.text or ""):
         reading.text = partial_text
-    cost = _cost(db, reading.spread_type)
-    if cost > 0:
-        retry = _retries(reading)
+    # Refund exactly what this attempt's debit took (prices may have changed since);
+    # an attempt with no debit (free spread, daily) refunds nothing.
+    debit_reference = _debit_reference(reading.id, _retries(reading))
+    amount = debit_amount(db, debit_reference)
+    if amount:
         refund_reading(
-            db,
-            reading.user_id,
-            cost,
-            reading.id,
-            reference_id=f"{_debit_reference(reading.id, retry)}:refund",
+            db, reading.user_id, amount, reading.id, reference_id=f"{debit_reference}:refund"
         )
     db.commit()
 

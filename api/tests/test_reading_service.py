@@ -567,3 +567,61 @@ def test_generation_deadline_exceeded_fails_and_refunds(
         list(run_generation(db, r))
     db.refresh(r)
     assert r.status == "failed" and balance(db, user.id) == 1
+
+
+# --- refunds come from the debit row ------------------------------------------
+
+
+def _set_price(db, spread, credits):
+    from app.models import SpreadPrice
+
+    db.get(SpreadPrice, spread).credits = credits
+    db.commit()
+
+
+@pytest.fixture
+def restore_prices(db):
+    from app.models import SpreadPrice
+
+    before = {p.spread_type: p.credits for p in db.query(SpreadPrice)}
+    yield
+    db.rollback()
+    for spread, credits in before.items():
+        db.get(SpreadPrice, spread).credits = credits
+    db.commit()
+
+
+def test_refund_equals_original_debit_after_price_change(
+    db, user, user_with_credits, fake_anthropic, restore_prices
+):
+    user_with_credits(3)
+    r = start_reading(db, user, "celtic_cross", None, None)  # debits 3
+    _set_price(db, "celtic_cross", 5)
+    fake_anthropic.raise_on_stream = _conn_error()
+    with pytest.raises(GenerationError):
+        list(run_generation(db, r))
+    assert _ledger(db, user) == [("reading", -3, str(r.id)), ("refund", 3, f"{r.id}:refund")]
+    assert balance(db, user.id) == 3
+
+
+def test_zero_priced_paid_spread_takes_no_debit(
+    db, user, fake_anthropic, restore_prices
+):
+    _set_price(db, "three_card", 0)
+    r = start_reading(db, user, "three_card", None, None)
+    assert r.status == "pending"
+    fake_anthropic.raise_on_stream = _conn_error()
+    with pytest.raises(GenerationError):
+        list(run_generation(db, r))
+    db.refresh(r)
+    assert r.status == "failed"
+    assert db.scalar(select(func.count()).select_from(CreditLedger)) == 0
+
+
+def test_debit_amount(db, user, user_with_credits):
+    from app.ledger.service import debit_amount
+
+    user_with_credits(3)
+    r = start_reading(db, user, "celtic_cross", None, None)
+    assert debit_amount(db, str(r.id)) == 3
+    assert debit_amount(db, f"{r.id}:retry1") is None
