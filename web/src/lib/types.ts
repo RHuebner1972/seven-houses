@@ -61,7 +61,7 @@ export interface Chart {
 
 export interface ProfileWithChart {
   profile: Profile;
-  chart: Chart;
+  chart: Chart | null;
 }
 
 export interface SpreadPosition {

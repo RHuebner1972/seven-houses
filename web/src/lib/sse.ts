@@ -1,3 +1,4 @@
+import { ApiError } from "./errors";
 import type { SseEvent } from "./types";
 
 const KNOWN = new Set(["cards", "delta", "done", "error"]);
@@ -31,7 +32,14 @@ export async function* parseSse(
   let raw = "";
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        if ((e as { name?: string } | null)?.name === "AbortError") throw e;
+        throw new ApiError(0, "network", (e as Error | null)?.message ?? "Stream interrupted");
+      }
+      const { done, value } = chunk;
       if (done) break;
       raw += decoder.decode(value, { stream: true });
       // hold a trailing \r back: it may be the first half of a \r\n split across chunks
@@ -47,6 +55,7 @@ export async function* parseSse(
       }
     }
   } finally {
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
   // trailing partial frame (no terminating blank line) is discarded

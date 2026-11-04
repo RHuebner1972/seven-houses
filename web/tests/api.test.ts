@@ -258,6 +258,26 @@ describe("streaming", () => {
     expect((await gen.next()).value?.event).toBe("done");
   });
 
+  test("aborting the signal rejects with AbortError", async () => {
+    server.use(
+      http.post(`${BASE}/readings`, async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return sse("");
+      }),
+    );
+    const ac = new AbortController();
+    const p = make().api.startReading({ spread_type: "daily" }, ac.signal);
+    ac.abort();
+    await expect(p).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  test("non-SSE 2xx on a stream endpoint throws bad_response", async () => {
+    server.use(http.post(`${BASE}/readings`, () => HttpResponse.json({ ok: 1 })));
+    await expect(make().api.startReading({ spread_type: "daily" })).rejects.toMatchObject({
+      code: "bad_response",
+    });
+  });
+
   test("retryReading maps 409 envelope", async () => {
     server.use(
       http.post(`${BASE}/readings/r1/retry`, () =>

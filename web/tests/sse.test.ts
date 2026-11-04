@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { ApiError } from "@/lib/errors";
 import { parseSse } from "@/lib/sse";
 import { collect, streamOf } from "./helpers/stream";
 
@@ -62,5 +63,51 @@ describe("parseSse", () => {
       ),
     );
     expect(events.map((e) => e.event)).toEqual(["delta"]);
+  });
+
+  test("data: without a space after the colon", async () => {
+    const events = await collect(parseSse(streamOf(['event:done\ndata:{"reading_id":"r"}\n\n'])));
+    expect(events).toEqual([{ event: "done", data: { reading_id: "r" } }]);
+  });
+
+  test("early exit cancels the underlying stream", async () => {
+    const cancel = vi.fn();
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode('event: delta\ndata: {"text":"a"}\n\n'));
+      },
+      cancel,
+    });
+    for await (const ev of parseSse(body)) {
+      expect(ev.event).toBe("delta");
+      break;
+    }
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("mid-stream read failure becomes ApiError(0, network)", async () => {
+    const enc = new TextEncoder();
+    let n = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (n++ === 0) c.enqueue(enc.encode('event: delta\ndata: {"text":"a"}\n\n'));
+        else return Promise.reject(new TypeError("terminated"));
+      },
+    });
+    const gen = parseSse(body);
+    expect((await gen.next()).value?.event).toBe("delta");
+    const err = await gen.next().catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 0, code: "network", message: "terminated" });
+  });
+
+  test("mid-stream AbortError is rethrown unchanged", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return Promise.reject(new DOMException("aborted", "AbortError"));
+      },
+    });
+    await expect(collect(parseSse(body))).rejects.toMatchObject({ name: "AbortError" });
   });
 });

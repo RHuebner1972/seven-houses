@@ -1,6 +1,5 @@
 import { ApiError } from "./errors";
 import type {
-  Chart,
   DailyResult,
   Me,
   Place,
@@ -60,8 +59,8 @@ export function createApi(
         signal: o.signal,
       });
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      throw new ApiError(0, "network", e instanceof Error ? e.message : "Network error");
+      if ((e as { name?: string } | null)?.name === "AbortError") throw e;
+      throw new ApiError(0, "network", (e as Error | null)?.message ?? "Network error");
     }
   }
 
@@ -94,6 +93,7 @@ export function createApi(
   async function stream(path: string, body: unknown, signal?: AbortSignal) {
     const res = await request(path, { method: "POST", body, stream: true, signal });
     if (!isSse(res) || !res.body) {
+      await res.body?.cancel().catch(() => undefined);
       throw new ApiError(res.status, "bad_response", "Expected an event stream");
     }
     return res.body;
@@ -123,7 +123,7 @@ export function createApi(
       json<ProfileWithChart>("/profiles", { method: "POST", body }),
     profiles: async (): Promise<Profile[]> =>
       (await json<{ profiles: Profile[] }>("/profiles")).profiles,
-    profile: (id: string) => json<{ profile: Profile; chart: Chart }>(`/profiles/${encodeURIComponent(id)}`),
+    profile: (id: string) => json<ProfileWithChart>(`/profiles/${encodeURIComponent(id)}`),
     deleteProfile: (id: string) => empty(`/profiles/${encodeURIComponent(id)}`, { method: "DELETE" }),
     spreads: () => json<Spread[]>("/spreads", { auth: "none" }),
     readings: (limit = 20) => json<ReadingSummary[]>(`/readings?limit=${limit}`),
