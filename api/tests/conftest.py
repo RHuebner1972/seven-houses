@@ -261,3 +261,51 @@ def fake_anthropic(monkeypatch):
 
     monkeypatch.setattr(generator.anthropic, "Anthropic", _Client)
     return fake
+
+
+@pytest.fixture
+def user_with_credits(db, user):
+    """Factory: user_with_credits(n) grants `n` credits to `user`, commits, returns the user."""
+    from uuid import uuid4
+
+    from app.ledger.service import credit
+
+    def grant(n: int) -> User:
+        credit(db, user.id, n, reason="grant", reference_id=f"grant-{uuid4()}")
+        db.commit()
+        return user
+
+    return grant
+
+
+@pytest.fixture
+def profile(db, user):
+    """A BirthProfile with a time-known Chart for `user` (Hull, MA)."""
+    from datetime import UTC, datetime
+
+    from app.astro.chart import compute_chart
+    from app.models import BirthProfile, Chart
+
+    utc = datetime(1990, 6, 15, 16, 30, tzinfo=UTC)
+    data = compute_chart(utc, 42.30, -70.91, True)
+    p = BirthProfile(
+        user_id=user.id,
+        name="Me",
+        birth_datetime_utc=utc,
+        birth_tz="America/New_York",
+        lat=42.30,
+        lon=-70.91,
+        place_label="Hull, MA, USA",
+        time_known=True,
+    )
+    db.add(p)
+    db.flush()
+    db.add(
+        Chart(
+            birth_profile_id=p.id,
+            data=data.model_dump(mode="json"),
+            engine_version=data.engine_version,
+        )
+    )
+    db.commit()
+    return p
