@@ -130,9 +130,9 @@ test("anonymous user is asked to sign in before buying", async () => {
   expect(purchase).not.toHaveBeenCalled();
   // the heading takes focus so screen readers announce the sheet
   expect(within(dialog).getByRole("heading", { name: "Sign in to buy credits" })).toHaveFocus();
-  // Task 11 wires these; for now they are present but inert
-  expect(within(dialog).getByRole("button", { name: /google/i })).toBeDisabled();
-  expect(within(dialog).getByRole("textbox", { name: /email/i })).toBeDisabled();
+  // no Google client id in tests: the slot says so; the email path is live
+  expect(within(dialog).getByText("Google sign-in isn't configured")).toBeInTheDocument();
+  expect(within(dialog).getByRole("textbox", { name: /email/i })).toBeEnabled();
 
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
