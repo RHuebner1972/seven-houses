@@ -21,6 +21,11 @@ class Unauthorized(AppError):
         super().__init__(401, "unauthorized", message)
 
 
+class Forbidden(AppError):
+    def __init__(self, message: str):
+        super().__init__(403, "forbidden", message)
+
+
 class InsufficientCredits(AppError):
     def __init__(self, message: str):
         super().__init__(402, "insufficient_credits", message)

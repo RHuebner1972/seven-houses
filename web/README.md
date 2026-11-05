@@ -25,6 +25,11 @@ npm run dev                                 # http://localhost:3000
 
 The API's default `CORS_ORIGINS` already includes `http://localhost:3000`.
 
+Google sign-in needs the same OAuth **Web** client ID in `web/.env.local`
+(`NEXT_PUBLIC_GOOGLE_CLIENT_ID`) and `api/.env` (`GOOGLE_CLIENT_ID`). Authorized
+JavaScript origin in Google Cloud: `http://localhost:3000`. Restart `next dev`
+after changing `NEXT_PUBLIC_*` values — they are inlined at startup.
+
 ## Environment
 
 | Variable | Purpose |

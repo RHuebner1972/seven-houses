@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.admin.router import router as admin_router
 from app.auth.router import router as auth_router
 from app.billing.router import router as billing_router
 from app.charts.router import router as charts_router
@@ -13,6 +14,7 @@ from app.readings.router import router as readings_router
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="Seventh House API")
+    app.state.settings = settings
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -26,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(readings_router)
     app.include_router(daily_router)
     app.include_router(billing_router)
+    app.include_router(admin_router)
 
     @app.get("/health")
     def health():

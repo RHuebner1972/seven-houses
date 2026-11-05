@@ -5,6 +5,8 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.networks import EmailStr
 from sqlalchemy.orm import Session
 
+from app.admin.access import is_admin
+from app.admin.service import unread_count
 from app.auth.deps import current_user, optional_current_user
 from app.auth.google import verify_google_id_token
 from app.auth.jwt import mint_token
@@ -58,13 +60,19 @@ def refresh(user: Annotated[User, Depends(current_user)]):
 
 
 @router.get("/me")
-def me(user: Annotated[User, Depends(current_user)], db: Annotated[Session, Depends(get_db)]):
+def me(
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
     sweep_stale_pending(db, user.id)  # refunds show up in the balance below
     return {
         "user_id": str(user.id),
         "email": user.email,
         "anon": user.email is None,
         "balance": balance(db, user.id),
+        "admin": is_admin(user, request.app.state.settings),
+        "unread_messages": unread_count(db, user.id),
     }
 
 

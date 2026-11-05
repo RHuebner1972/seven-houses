@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.errors import ValidationFailed
 from app.ledger.service import balance
-from app.models import BirthProfile, CreditLedger, DailyDraw, GenerationEvent, Reading, User
+from app.models import (
+    AdminMessage,
+    BirthProfile,
+    CouponRedemption,
+    CreditLedger,
+    DailyDraw,
+    GenerationEvent,
+    Reading,
+    User,
+)
 
 
 def _find_owner(
@@ -41,8 +50,19 @@ def merge_anonymous_into(db: Session, current: User, owner: User) -> None:
     # concurrent debit waits for the merge (and then finds the user gone) instead of
     # landing between the balance read and the delete.
     db.execute(select(User.id).where(User.id == current.id).with_for_update())
-    for model in (BirthProfile, Reading, GenerationEvent):
+    for model in (BirthProfile, Reading, GenerationEvent, AdminMessage):
         db.execute(update(model).where(model.user_id == current.id).values(user_id=owner.id))
+    owner_coupons = select(CouponRedemption.coupon_id).where(CouponRedemption.user_id == owner.id)
+    db.execute(
+        delete(CouponRedemption).where(
+            CouponRedemption.user_id == current.id, CouponRedemption.coupon_id.in_(owner_coupons)
+        )
+    )
+    db.execute(
+        update(CouponRedemption)
+        .where(CouponRedemption.user_id == current.id)
+        .values(user_id=owner.id)
+    )
     db.execute(
         update(CreditLedger)
         .where(CreditLedger.user_id == current.id, CreditLedger.reason.in_(("reading", "refund")))

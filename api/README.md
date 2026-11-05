@@ -15,7 +15,8 @@ Read by `app/config.py` (`Settings`), from the environment or an `api/.env` file
 | `ANTHROPIC_API_KEY` | empty | Anthropic API key for reading generation. |
 | `REVENUECAT_WEBHOOK_SECRET` | empty | Shared secret; RevenueCat must send `Authorization: Bearer <secret>` on the webhook. Requests are rejected with 401 otherwise. |
 | `RESEND_API_KEY` | empty | Resend key for magic-link emails. |
-| `GOOGLE_CLIENT_ID` | empty | OAuth client ID that Google ID tokens must be issued for. |
+| `RESEND_FROM` | `Seventh House <no-reply@seventhhouse.app>` | From address. For local testing before a domain is verified, use `Seventh House <beth.t@example.com>` (Resend will only deliver to the account owner's inbox). |
+| `GOOGLE_CLIENT_ID` | empty | Same OAuth 2.0 Web client ID as `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the web app. Google Identity Services ID tokens are rejected unless they were issued for this client. |
 | `OPENCAGE_API_KEY` | empty | OpenCage key for birthplace geocoding and timezone lookup. |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed browser origins: comma-separated or a JSON list. The Android (Capacitor) app's WebView origin is `https://localhost`, so include it in production. |
 | `MODEL_PAID` | `claude-sonnet-4-5` | Model for paid spreads. |
@@ -25,6 +26,17 @@ Read by `app/config.py` (`Settings`), from the environment or an `api/.env` file
 | `CREDIT_PRODUCTS` | `{"sh_credits_5":5,"sh_credits_15":15,"sh_credits_40":40}` | JSON map of store product ID to credits granted. Every amount must be positive. |
 
 ## Run locally
+
+From `api/`, after `api/.env` exists (at least `DATABASE_URL`) and Postgres is up:
+
+```powershell
+powershell -File .\run.ps1
+```
+
+That uses `.venv` (creates it and installs `requirements-dev.txt` if needed), runs
+`alembic upgrade head`, and starts uvicorn with reload on http://127.0.0.1:8000.
+
+Manual equivalent:
 
 ```bash
 cd api
@@ -36,6 +48,23 @@ uvicorn app.main:app --reload
 ```
 
 Health check: `GET /health`.
+
+### Google sign-in (local)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create (or pick) a project, configure the **OAuth consent screen** (External, add your Google account as a test user).
+2. Create an **OAuth 2.0 Client ID** of type **Web application**.
+3. Authorized JavaScript origins: `http://localhost:3000`. No redirect URI is required for the GIS button.
+4. Paste the client ID (`….apps.googleusercontent.com`) into both `GOOGLE_CLIENT_ID` in `api/.env` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `web/.env.local`. Restart the API and `next dev`.
+
+### Resend magic links (local)
+
+`RESEND_API_KEY` is already required. Until `seventhhouse.app` is verified in Resend, set:
+
+```
+RESEND_FROM=Seventh House <beth.t@example.com>
+```
+
+Resend will only deliver that onboarding sender to the inbox of the Resend account owner. After you verify the domain: add the DNS records Resend shows, then switch `RESEND_FROM` to `Seventh House <no-reply@seventhhouse.app>` and restart the API. `APP_BASE_URL` must be the web origin the link should open (`http://localhost:3000` locally).
 
 ## Tests
 

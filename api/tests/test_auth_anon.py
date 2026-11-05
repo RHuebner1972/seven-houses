@@ -44,7 +44,14 @@ def test_me_returns_balance(client, db, user):
     db.commit()
     r = client.get("/me", headers=auth_headers(user))
     assert r.status_code == 200
-    assert r.json() == {"user_id": str(user.id), "email": None, "anon": True, "balance": 2}
+    assert r.json() == {
+        "user_id": str(user.id),
+        "email": None,
+        "anon": True,
+        "balance": 2,
+        "admin": False,
+        "unread_messages": 0,
+    }
 
 
 def test_me_reports_non_anonymous_user(client, db):

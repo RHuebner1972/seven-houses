@@ -34,6 +34,11 @@ def test_cors_origins_from_env(monkeypatch):
     assert Settings().cors_origins == ["https://a.com", "https://b.com"]
 
 
+def test_admin_emails_comma_separated_and_case_preserved():
+    s = Settings(admin_emails="Owner@X.io,  other@x.io")
+    assert s.admin_emails == ["Owner@X.io", "other@x.io"]
+
+
 def test_prod_rejects_short_jwt_secret():
     with pytest.raises(ValueError, match="32"):
         Settings(env="prod", jwt_secret="x" * 31)
@@ -41,6 +46,13 @@ def test_prod_rejects_short_jwt_secret():
 
 def test_short_jwt_secret_allowed_outside_prod():
     assert Settings(env="dev", jwt_secret="short").jwt_secret == "short"
+
+
+def test_resend_from_default_and_override():
+    assert Settings.model_fields["resend_from"].default == "Seventh House <no-reply@seventhhouse.app>"
+    assert Settings(resend_from="Seventh House <beth.t@example.com>").resend_from == (
+        "Seventh House <beth.t@example.com>"
+    )
 
 
 @pytest.mark.parametrize("amount", [0, -5])

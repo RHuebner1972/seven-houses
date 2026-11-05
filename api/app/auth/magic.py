@@ -24,10 +24,11 @@ def _hash(raw: str) -> str:
 
 
 def send_magic_link_email(to: str, link: str) -> None:
-    resend.api_key = get_settings().resend_api_key
+    settings = get_settings()
+    resend.api_key = settings.resend_api_key
     resend.Emails.send(
         {
-            "from": "Seventh House <no-reply@seventhhouse.app>",
+            "from": settings.resend_from,
             "to": [to],
             "subject": "Your Seventh House sign-in link",
             "html": f'<p><a href="{link}">Sign in to Seventh House</a></p>'
