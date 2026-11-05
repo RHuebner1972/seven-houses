@@ -198,13 +198,17 @@ function ReadingNew() {
 
   const onDone = useCallback(() => {
     setDone(true);
-    qc.invalidateQueries({ queryKey: ["me"] });
     qc.invalidateQueries({ queryKey: ["readings"] });
   }, [qc]);
 
   const onAbort = useCallback(() => {
     if (deltasRef.current > 0) toast("Your reading is being saved to your journal");
   }, [toast]);
+
+  // Done, error or abandoned: the balance may have moved either way (debit, refund), so re-read it.
+  const onSettled = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["me"] });
+  }, [qc]);
 
   const reset = () => {
     setSession(null);
@@ -237,6 +241,7 @@ function ReadingNew() {
             onDelta={onDelta}
             onDone={onDone}
             onAbort={onAbort}
+            onSettled={onSettled}
           />
         </div>
         {done ? (

@@ -155,10 +155,16 @@ function ReadingBody({
     qc.invalidateQueries({ queryKey: readingKey(reading.id) });
     qc.invalidateQueries({ queryKey: READINGS_KEY });
   }, [qc, reading.id]);
+  // A retry can debit, refund or both: never compute the balance, re-read it at each step.
+  const refreshBalance = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["me"] });
+  }, [qc]);
 
   // Keep the live stream on screen until the re-read reading arrives complete, so the text never flickers.
   if (retrying && reading.status !== "complete") {
-    return <ReadingStream source={source} onDone={onDone} />;
+    return (
+      <ReadingStream source={source} onCards={refreshBalance} onDone={onDone} onSettled={refreshBalance} />
+    );
   }
 
   if (reading.status === "pending") {

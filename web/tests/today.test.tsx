@@ -464,3 +464,44 @@ test("ReadingStream under StrictMode calls source once and never fires onAbort",
   expect(source).toHaveBeenCalledTimes(1);
   expect(onAbort).not.toHaveBeenCalled();
 });
+
+test("ReadingStream: onSettled fires exactly once, after done, error or abort", async () => {
+  const settledDone = vi.fn();
+  const doneSource = async () => sse([frame("done", { reading_id: "d" })]).body!;
+  render(<ReadingStream source={doneSource} onSettled={settledDone} />);
+  await waitFor(() => expect(settledDone).toHaveBeenCalledWith("done"));
+  expect(settledDone).toHaveBeenCalledTimes(1);
+
+  const settledErr = vi.fn();
+  const errSource = async () => sse([frame("error", { code: "x", message: "Nope." })]).body!;
+  render(<ReadingStream source={errSource} onSettled={settledErr} />);
+  await screen.findByText("Nope.");
+  expect(settledErr).toHaveBeenCalledTimes(1);
+  expect(settledErr).toHaveBeenCalledWith("error");
+
+  const settledAbort = vi.fn();
+  const onAbort = vi.fn();
+  const openSource = async () =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode(frame("delta", { text: "Half" })));
+      },
+    });
+  const { unmount } = render(<ReadingStream source={openSource} onAbort={onAbort} onSettled={settledAbort} />);
+  await screen.findByText("Half");
+  unmount();
+  expect(onAbort).toHaveBeenCalledTimes(1);
+  expect(settledAbort).toHaveBeenCalledTimes(1);
+  expect(settledAbort).toHaveBeenCalledWith("abort");
+  // onAbort precedes onSettled
+  expect(onAbort.mock.invocationCallOrder[0]).toBeLessThan(settledAbort.mock.invocationCallOrder[0]);
+
+  // a source that steps aside (AbortError) is not a settlement: the caller took over
+  const settledAside = vi.fn();
+  const aside = async () => {
+    throw new DOMException("aside", "AbortError");
+  };
+  render(<ReadingStream source={aside} onSettled={settledAside} />);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(settledAside).not.toHaveBeenCalled();
+});
