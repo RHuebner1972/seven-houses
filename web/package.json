@@ -13,7 +13,8 @@
     "sync-cards": "node scripts/sync-cards.mjs",
     "placeholder-deck": "node scripts/make-placeholder-deck.mjs",
     "make-icons": "node scripts/make-icons.mjs",
-    "prebuild": "node scripts/sync-cards.mjs && node scripts/make-icons.mjs"
+    "make-sw": "node scripts/make-sw.mjs",
+    "prebuild": "node scripts/sync-cards.mjs && node scripts/make-icons.mjs && node scripts/make-sw.mjs"
   },
   "dependencies": {
     "@revenuecat/purchases-js": "1.74.0",

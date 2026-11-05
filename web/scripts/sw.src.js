@@ -1,8 +1,11 @@
 /* Seventh House service worker: offline app shell + deck cache.
- * Plain script, no bundler. Only same-origin GETs are ever handled; the API lives on
- * another origin and is never cached, nor is any same-origin /api path.
+ * Plain script, no bundler. Source lives in scripts/sw.src.js; scripts/make-sw.mjs stamps
+ * __BUILD_ID__ and writes public/sw.js at prebuild, so each deploy gets its own cache and
+ * activate() purges the previous one.
+ * Only same-origin GETs are ever handled; the API lives on another origin and is never
+ * cached, nor is any same-origin /api path.
  */
-const CACHE = "sh-v1";
+const CACHE = "sh-__BUILD_ID__";
 const SHELL = "/";
 const PRECACHE = [
   SHELL,
@@ -19,6 +22,8 @@ const PRECACHE = [
 /** Routing decision for one request: "bypass" | "cache-first" | "navigate" | "network-first". */
 function strategyFor(request, origin) {
   if (request.method !== "GET") return "bypass";
+  // Cache.put rejects 206 partial responses; let range requests go straight to the network.
+  if (request.headers && request.headers.has("range")) return "bypass";
   const url = new URL(request.url);
   if (url.origin !== origin) return "bypass";
   const p = url.pathname;
@@ -36,21 +41,34 @@ function cacheable(response) {
 async function putIfCacheable(request, response) {
   if (!cacheable(response)) return;
   const cache = await self.caches.open(CACHE);
-  await cache.put(request, response.clone());
+  await cache.put(request, response);
 }
 
-async function cacheFirst(request) {
+/** Store a copy off the response path: a quota or 206 rejection must never fail the fetch. */
+function storeInBackground(event, response) {
+  if (!cacheable(response)) return;
+  const { request } = event;
+  event.waitUntil(
+    putIfCacheable(request, response.clone()).catch((err) =>
+      console.warn("sw cache put failed", request.url, err),
+    ),
+  );
+}
+
+async function cacheFirst(event) {
+  const { request } = event;
   const hit = await self.caches.match(request);
   if (hit) return hit;
   const res = await fetch(request);
-  await putIfCacheable(request, res);
+  storeInBackground(event, res);
   return res;
 }
 
-async function networkFirst(request, fallbackToShell) {
+async function networkFirst(event, fallbackToShell) {
+  const { request } = event;
   try {
     const res = await fetch(request);
-    await putIfCacheable(request, res);
+    storeInBackground(event, res);
     return res;
   } catch (err) {
     const hit = await self.caches.match(request);
@@ -73,8 +91,9 @@ self.addEventListener("install", (event) => {
           try {
             const res = await fetch(new Request(url, { cache: "reload" }));
             if (cacheable(res)) await cache.put(url, res);
-          } catch {
-            /* offline during install; the fetch handler fills in later */
+            else console.warn("sw precache skipped", url, res && res.status);
+          } catch (err) {
+            console.warn("sw precache failed", url, err);
           }
         }),
       );
@@ -98,9 +117,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const strategy = strategyFor(event.request, self.location.origin);
   if (strategy === "bypass") return;
-  if (strategy === "cache-first") event.respondWith(cacheFirst(event.request));
-  else event.respondWith(networkFirst(event.request, strategy === "navigate"));
+  if (strategy === "cache-first") event.respondWith(cacheFirst(event));
+  else event.respondWith(networkFirst(event, strategy === "navigate"));
 });
 
 // Exposed for unit tests, which evaluate this file in a sandbox.
-self.__sh = { CACHE, PRECACHE, strategyFor, cacheable };
+self.__sh = { CACHE, PRECACHE, strategyFor, cacheable, cacheFirst, networkFirst };
