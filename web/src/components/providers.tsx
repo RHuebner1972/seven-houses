@@ -17,15 +17,21 @@ import {
 } from "react";
 import { createApi, type Api } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
-import { decodeUserId, localStorageTokenStore, type TokenStore } from "@/lib/auth";
+import { decodeClaims, decodeUserId, localStorageTokenStore, needsRefresh, type TokenStore } from "@/lib/auth";
 import { ToastProvider } from "@/components/toast";
+import { SessionExpiredNotice } from "@/components/session-expired-notice";
 import { selectBillingProvider } from "@/billing";
 import type { BillingProvider as BillingProviderApi } from "@/billing/provider";
+
+export const SESSION_EXPIRED_COPY =
+  "Your session ended. Sign in again to restore your readings and credits.";
 
 export interface AuthValue {
   token: string | null;
   userId: string | null;
   ready: boolean;
+  /** A signed-in token was rejected and replaced by an anonymous one; cleared by signing in. */
+  sessionExpired: boolean;
   signInWithGoogle(idToken: string): Promise<void>;
   verifyMagic(token: string): Promise<void>;
   signOut(): Promise<void>;
@@ -59,6 +65,7 @@ export function AuthProvider({
   const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const bootstrapped = useRef(false);
 
   const [session] = useState(() => {
@@ -80,19 +87,42 @@ export function AuthProvider({
       })();
       return pending;
     };
+    let refreshing: Promise<void> | null = null;
+    /**
+     * Swap a valid-but-ageing token for a fresh one so a regular visitor never reaches the
+     * 30-day expiry. Best effort: failures are swallowed (the next boot tries again), and the
+     * reply is dropped if sign-in or sign-out changed the token while it was in flight.
+     */
+    const refreshIfStale = (): Promise<void> => {
+      const cur = store.get();
+      if (!cur || !needsRefresh(cur)) return Promise.resolve();
+      refreshing ??= (async () => {
+        try {
+          const r = await api.refresh();
+          if (store.get() === cur) adopt(r.token);
+        } catch {
+          /* keep the current token; it is still valid */
+        } finally {
+          refreshing = null;
+        }
+      })();
+      return refreshing;
+    };
     const api: Api = createApi(
       () => store.get(),
       (failed) => {
         // A stale 401 must not destroy a newer valid token.
         const cur = store.get();
         if (cur && cur !== failed) return Promise.resolve(cur);
+        // Losing a signed-in session is worth a word; an anonymous one is replaced silently.
+        if (decodeClaims(failed)?.anon === false) setSessionExpired(true);
         store.clear();
         return mint();
       },
     );
-    return { api, mint, adopt };
+    return { api, mint, adopt, refreshIfStale };
   });
-  const { api, mint, adopt } = session;
+  const { api, mint, adopt, refreshIfStale } = session;
 
   useEffect(() => {
     if (bootstrapped.current) return;
@@ -108,13 +138,25 @@ export function AuthProvider({
         }
       }
       setReady(true);
+      if (existing) void refreshIfStale();
     })();
-  }, [store, mint]);
+  }, [store, mint, refreshIfStale]);
+
+  // A tab left open for days: re-check the token age whenever it comes back into view.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshIfStale();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshIfStale]);
 
   const signInWithGoogle = useCallback(
     async (idToken: string) => {
       const r = await api.google(idToken);
       adopt(r.token);
+      setSessionExpired(false);
       await queryClient.invalidateQueries();
     },
     [api, adopt, queryClient],
@@ -122,11 +164,14 @@ export function AuthProvider({
 
   const verifyMagic = useCallback(
     async (t: string) => {
+      // the link is single-use: do not spend it on a bearer the API may be about to reject
+      await refreshIfStale();
       const r = await api.magicVerify(t);
       adopt(r.token);
+      setSessionExpired(false);
       await queryClient.invalidateQueries();
     },
-    [api, adopt, queryClient],
+    [api, adopt, refreshIfStale, queryClient],
   );
 
   const signOut = useCallback(async () => {
@@ -149,11 +194,12 @@ export function AuthProvider({
       token,
       userId: decodeUserId(token),
       ready,
+      sessionExpired,
       signInWithGoogle,
       verifyMagic,
       signOut,
     }),
-    [api, token, ready, signInWithGoogle, verifyMagic, signOut],
+    [api, token, ready, sessionExpired, signInWithGoogle, verifyMagic, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -261,7 +307,10 @@ export function Providers({
     <QueryClientProvider client={client}>
       <AuthProvider>
         <BillingProvider provider={billing}>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            {children}
+            <SessionExpiredNotice />
+          </ToastProvider>
         </BillingProvider>
       </AuthProvider>
     </QueryClientProvider>

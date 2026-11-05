@@ -104,7 +104,8 @@ export function createApi(
   return {
     anonymous: () =>
       json<{ token: string; user_id: string }>("/auth/anonymous", { method: "POST", auth: "none" }),
-    refresh: () => json<{ token: string }>("/auth/refresh", { method: "POST" }),
+    // `optional`: a refused refresh is the caller's business, never a reason to mint anonymous.
+    refresh: () => json<{ token: string }>("/auth/refresh", { method: "POST", auth: "optional" }),
     me: () => json<Me>("/me"),
     google: (idToken: string) =>
       json<{ token: string; user_id: string }>("/auth/google", {

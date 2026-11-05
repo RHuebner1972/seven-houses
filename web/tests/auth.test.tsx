@@ -1,13 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { StrictMode, useEffect } from "react";
 import { QueryClient } from "@tanstack/react-query";
-import { Providers as RealProviders, useAuth, useApi } from "@/components/providers";
+import { Providers as RealProviders, SESSION_EXPIRED_COPY, useAuth, useApi } from "@/components/providers";
 import type { ReactNode } from "react";
 import { BalancePill } from "@/components/balance-pill";
-import { decodeUserId } from "@/lib/auth";
+import { decodeClaims, decodeUserId, needsRefresh, REFRESH_AFTER_MS } from "@/lib/auth";
 import { apiBase } from "@/lib/api";
 
 const BASE = apiBase();
@@ -289,4 +289,231 @@ test("signInWithGoogle and verifyMagic adopt the token and refetch /me", async (
   expect(log.find((l) => l.path === "/auth/magic/verify")?.auth).toBe("Bearer g1");
   expect(await screen.findByText("3")).toBeInTheDocument();
   expect(log.filter((l) => l.path === "/me").at(-1)?.auth).toBe("Bearer m1");
+});
+
+// --- token refresh and session expiry ---
+
+const b64url = (o: object) =>
+  btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const DAY = 86_400;
+const nowSec = () => Math.floor(Date.now() / 1000);
+/** A token minted `ageDays` ago with the API's 30-day TTL. */
+const aged = (ageDays: number, { anon = true, sub = "u1" } = {}) => {
+  const iat = nowSec() - ageDays * DAY;
+  return `${b64url({ alg: "none" })}.${b64url({ sub, anon, iat, exp: iat + 30 * DAY })}.sig`;
+};
+const meOk = (over: object = {}) =>
+  HttpResponse.json({ user_id: "u1", email: null, anon: true, balance: 0, ...over });
+
+test("decodeClaims reads sub/anon/iat/exp and rejects malformed tokens", () => {
+  const t = aged(2, { anon: false, sub: "u-2" });
+  const c = decodeClaims(t)!;
+  expect(c.sub).toBe("u-2");
+  expect(c.anon).toBe(false);
+  expect(c.exp! - c.iat!).toBe(30 * DAY);
+  expect(decodeClaims(jwt("only-sub"))).toEqual({ sub: "only-sub", anon: null, iat: null, exp: null });
+  expect(decodeClaims("garbage")).toBeNull();
+  expect(decodeClaims("a.!!!.c")).toBeNull();
+  expect(decodeClaims(`${b64url({})}.${b64url({ anon: true })}.s`)).toBeNull();
+  expect(decodeClaims(null)).toBeNull();
+  expect(REFRESH_AFTER_MS).toBe(7 * DAY * 1000);
+  expect(needsRefresh(aged(8))).toBe(true);
+  expect(needsRefresh(aged(1))).toBe(false);
+  expect(needsRefresh(aged(31))).toBe(false); // expired: a refresh would 401; let the mint path handle it
+  expect(needsRefresh("tok")).toBe(false);
+});
+
+test("a token older than seven days is refreshed on boot and the new one adopted", async () => {
+  const old = aged(8);
+  localStorage.setItem("sh.token", old);
+  server.use(
+    logged("/auth/refresh", "post", () => HttpResponse.json({ token: "r1" })),
+    logged("/me", "get", () => meOk()),
+  );
+  render(
+    <StrictMode>
+      <Providers>
+        <Grab />
+        <BalancePill />
+      </Providers>
+    </StrictMode>,
+  );
+  await waitFor(() => expect(localStorage.getItem("sh.token")).toBe("r1"));
+  expect(count("/auth/refresh")).toBe(1);
+  expect(log.find((l) => l.path === "/auth/refresh")?.auth).toBe(`Bearer ${old}`);
+  expect(count("/auth/anonymous")).toBe(0);
+  await waitFor(() => expect(cap.auth?.token).toBe("r1"));
+});
+
+test("a one-day-old token is not refreshed", async () => {
+  const fresh = aged(1);
+  localStorage.setItem("sh.token", fresh);
+  server.use(
+    logged("/auth/refresh", "post", () => HttpResponse.json({ token: "r1" })),
+    logged("/me", "get", () => meOk({ balance: 4 })),
+  );
+  render(
+    <Providers>
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("4")).toBeInTheDocument();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(count("/auth/refresh")).toBe(0);
+  expect(localStorage.getItem("sh.token")).toBe(fresh);
+});
+
+test("the tab becoming visible re-checks the token age", async () => {
+  localStorage.setItem("sh.token", aged(1));
+  server.use(
+    logged("/auth/refresh", "post", () => HttpResponse.json({ token: "r2" })),
+    logged("/me", "get", () => meOk()),
+  );
+  render(
+    <Providers>
+      <Grab />
+    </Providers>,
+  );
+  await waitFor(() => expect(cap.auth?.ready).toBe(true));
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(count("/auth/refresh")).toBe(0);
+  // time passes (simulated: the stored token is now eight days old)
+  localStorage.setItem("sh.token", aged(8));
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await waitFor(() => expect(localStorage.getItem("sh.token")).toBe("r2"));
+  expect(count("/auth/refresh")).toBe(1);
+});
+
+test("a refresh that lands after the token changed is discarded", async () => {
+  const old = aged(8);
+  localStorage.setItem("sh.token", old);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  server.use(
+    http.post(`${BASE}/auth/refresh`, async () => {
+      log.push({ path: "/auth/refresh", auth: null });
+      await gate;
+      return HttpResponse.json({ token: "late" });
+    }),
+    logged("/auth/google", "post", () => HttpResponse.json({ token: "real", user_id: "u" })),
+    logged("/me", "get", () => meOk()),
+  );
+  render(
+    <Providers>
+      <Grab />
+    </Providers>,
+  );
+  await waitFor(() => expect(count("/auth/refresh")).toBe(1));
+  await act(async () => {
+    await cap.auth!.signInWithGoogle("idt");
+  });
+  expect(localStorage.getItem("sh.token")).toBe("real");
+  release();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(localStorage.getItem("sh.token")).toBe("real");
+});
+
+test("a refused refresh neither mints nor disturbs the current token", async () => {
+  const old = aged(8);
+  localStorage.setItem("sh.token", old);
+  server.use(
+    logged("/auth/refresh", "post", () =>
+      HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 }),
+    ),
+    logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "x", user_id: "x" })),
+    logged("/me", "get", () => meOk({ balance: 2 })),
+  );
+  render(
+    <Providers>
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("2")).toBeInTheDocument();
+  await waitFor(() => expect(count("/auth/refresh")).toBe(1));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(count("/auth/anonymous")).toBe(0);
+  expect(localStorage.getItem("sh.token")).toBe(old);
+});
+
+test("verifyMagic refreshes a stale bearer before spending the link", async () => {
+  const old = aged(8);
+  localStorage.setItem("sh.token", old);
+  server.use(
+    logged("/auth/refresh", "post", () => HttpResponse.json({ token: "r3" })),
+    logged("/auth/magic/verify", "post", () => HttpResponse.json({ token: "m1", user_id: "u" })),
+    logged("/me", "get", () => meOk()),
+  );
+  render(
+    <Providers>
+      <Grab />
+    </Providers>,
+  );
+  await waitFor(() => expect(cap.auth?.ready).toBe(true));
+  await act(async () => {
+    await cap.auth!.verifyMagic("link");
+  });
+  expect(log.find((l) => l.path === "/auth/magic/verify")?.auth).toBe("Bearer r3");
+  expect(localStorage.getItem("sh.token")).toBe("m1");
+});
+
+test("a 401 on a signed-in token mints anonymous and says the session ended", async () => {
+  const signedIn = aged(1, { anon: false, sub: "u-real" });
+  localStorage.setItem("sh.token", signedIn);
+  server.use(
+    logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "a1", user_id: "a" })),
+    http.get(`${BASE}/me`, ({ request }) => {
+      const auth = request.headers.get("authorization");
+      log.push({ path: "/me", auth });
+      return auth === `Bearer ${signedIn}`
+        ? HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 })
+        : meOk({ user_id: "a", balance: 0 });
+    }),
+    logged("/auth/google", "post", () => HttpResponse.json({ token: "g", user_id: "u-real" })),
+  );
+  render(
+    <Providers>
+      <Grab />
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("0")).toBeInTheDocument();
+  expect(localStorage.getItem("sh.token")).toBe("a1");
+  expect(count("/auth/anonymous")).toBe(1);
+  await waitFor(() => expect(cap.auth?.sessionExpired).toBe(true));
+  expect(screen.getByRole("status")).toHaveTextContent(SESSION_EXPIRED_COPY);
+  // the toast offers a way back in
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  // signing in clears the flag
+  await act(async () => {
+    await cap.auth!.signInWithGoogle("idt");
+  });
+  expect(cap.auth?.sessionExpired).toBe(false);
+});
+
+test("a 401 on an anonymous token mints silently", async () => {
+  const anon = aged(1, { anon: true });
+  localStorage.setItem("sh.token", anon);
+  server.use(
+    logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "a2", user_id: "a" })),
+    http.get(`${BASE}/me`, ({ request }) =>
+      request.headers.get("authorization") === `Bearer ${anon}`
+        ? HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 })
+        : meOk({ balance: 6 }),
+    ),
+  );
+  render(
+    <Providers>
+      <Grab />
+      <BalancePill />
+    </Providers>,
+  );
+  expect(await screen.findByText("6")).toBeInTheDocument();
+  expect(localStorage.getItem("sh.token")).toBe("a2");
+  expect(cap.auth?.sessionExpired).toBe(false);
+  expect(screen.getByRole("status")).not.toHaveTextContent(/session ended/i);
 });
