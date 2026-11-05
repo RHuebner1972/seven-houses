@@ -517,3 +517,23 @@ test("a 401 on an anonymous token mints silently", async () => {
   expect(cap.auth?.sessionExpired).toBe(false);
   expect(screen.getByRole("status")).not.toHaveTextContent(/session ended/i);
 });
+
+test("signOut forgets the daily card cached for the previous user", async () => {
+  localStorage.setItem("sh.token", jwt("u-a"));
+  localStorage.setItem("sh.lastDaily", JSON.stringify({ userId: "u-a", localDate: "2026-11-05", reading: {} }));
+  server.use(
+    logged("/auth/anonymous", "post", () => HttpResponse.json({ token: "fresh", user_id: "u9" })),
+    logged("/me", "get", () => meOk()),
+  );
+  render(
+    <Providers>
+      <Grab />
+    </Providers>,
+  );
+  await waitFor(() => expect(cap.auth?.ready).toBe(true));
+  await act(async () => {
+    await cap.auth!.signOut();
+  });
+  expect(localStorage.getItem("sh.lastDaily")).toBeNull();
+  expect(localStorage.getItem("sh.token")).toBe("fresh");
+});

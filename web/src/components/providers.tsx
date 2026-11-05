@@ -18,6 +18,7 @@ import {
 import { createApi, type Api } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import { decodeClaims, decodeUserId, localStorageTokenStore, needsRefresh, type TokenStore } from "@/lib/auth";
+import { clearDailyCache } from "@/lib/daily-cache";
 import { ToastProvider } from "@/components/toast";
 import { SessionExpiredNotice } from "@/components/session-expired-notice";
 import { selectBillingProvider } from "@/billing";
@@ -181,6 +182,7 @@ export function AuthProvider({
     await cancelled;
     try {
       store.clear();
+      clearDailyCache(); // the daily card belongs to the account being left
       setToken(null);
       await mint();
     } finally {

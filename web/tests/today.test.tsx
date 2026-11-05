@@ -23,6 +23,11 @@ vi.mock("@/lib/tz", async (importOriginal) => {
 });
 
 const BASE = apiBase();
+const jwt = (sub: string) => {
+  const b64 = (o: object) =>
+    btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none" })}.${b64({ sub })}.sig`;
+};
 let qc: QueryClient;
 function Providers({ children }: { children: ReactNode }) {
   return <RealProviders queryClient={qc}>{children}</RealProviders>;
@@ -40,7 +45,7 @@ beforeEach(() => {
   log = [];
   tzMock.today = undefined;
   localStorage.clear();
-  localStorage.setItem("sh.token", "tok");
+  localStorage.setItem("sh.token", jwt("u1"));
 });
 afterEach(() => {
   server.resetHandlers();
@@ -116,6 +121,7 @@ test("tap flips the card and streams today's reading", async () => {
     cards: [{ card_id: "major-00-fool", reversed: false }],
   });
   expect(cached.localDate).toBe(localDate());
+  expect(cached.userId).toBe("u1");
   expect(screen.getByText(/The Fool/, { selector: "p" })).toHaveTextContent(/upright/i);
   expect(screen.getByRole("link", { name: /go deeper/i })).toHaveAttribute("href", "/reading/new/");
 });
@@ -140,7 +146,10 @@ test("existing complete daily renders without streaming", async () => {
 });
 
 test("a cached daily for today renders instantly without a request", async () => {
-  localStorage.setItem("sh.lastDaily", JSON.stringify({ localDate: localDate(), reading: reading() }));
+  localStorage.setItem(
+    "sh.lastDaily",
+    JSON.stringify({ userId: "u1", localDate: localDate(), reading: reading() }),
+  );
   server.use(onDaily(() => HttpResponse.json({ reading: reading() })));
   render(
     <Providers>
@@ -232,7 +241,7 @@ test("409 gives up after 30 polls with a retry", async () => {
 test("a new local date invalidates the cached daily", async () => {
   localStorage.setItem(
     "sh.lastDaily",
-    JSON.stringify({ localDate: "2000-01-01", reading: reading({ text: "Old news." }) }),
+    JSON.stringify({ userId: "u1", localDate: "2000-01-01", reading: reading({ text: "Old news." }) }),
   );
   server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r10", text: "Fresh today." }) })));
   render(
@@ -504,4 +513,37 @@ test("ReadingStream: onSettled fires exactly once, after done, error or abort", 
   render(<ReadingStream source={aside} onSettled={settledAside} />);
   await new Promise((r) => setTimeout(r, 20));
   expect(settledAside).not.toHaveBeenCalled();
+});
+
+test("another user's cached daily is not shown; the card is drawn afresh", async () => {
+  localStorage.setItem(
+    "sh.lastDaily",
+    JSON.stringify({ userId: "someone-else", localDate: localDate(), reading: reading({ text: "Not yours." }) }),
+  );
+  server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r11", text: "Yours today." }) })));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  expect(await screen.findByRole("button", { name: /reveal/i })).toBeInTheDocument();
+  expect(screen.queryByText("Not yours.")).toBeNull();
+  await reveal();
+  expect(await screen.findByText("Yours today.")).toBeInTheDocument();
+  expect(count("POST", "/daily")).toBe(1);
+  expect(JSON.parse(localStorage.getItem("sh.lastDaily")!)).toMatchObject({ userId: "u1", reading: { id: "r11" } });
+});
+
+test("a pre-scoping cache entry (no userId) is ignored", async () => {
+  localStorage.setItem("sh.lastDaily", JSON.stringify({ localDate: localDate(), reading: reading({ text: "Legacy." }) }));
+  server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r12", text: "Scoped." }) })));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  expect(await screen.findByRole("button", { name: /reveal/i })).toBeInTheDocument();
+  expect(screen.queryByText("Legacy.")).toBeNull();
+  await reveal();
+  expect(await screen.findByText("Scoped.")).toBeInTheDocument();
 });
