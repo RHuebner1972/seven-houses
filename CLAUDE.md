@@ -4,7 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo state
 
-Seventh House: tarot readings interpreted through a birth chart (Android + web). Only `api/` (FastAPI backend, Plan 1 of 3) exists so far. `web/` (Next.js static export + Capacitor) and `deck/` are planned but not yet in the repo. Design spec and plans are in `docs/superpowers/`; `docs/status-*.md` lists known gaps and owner deploy steps. `api/README.md` has the env-var table, rate limits, SSE/refund semantics and deploy steps, so read it before changing those areas.
+Seventh House: tarot readings interpreted through a birth chart (Android + web). `api/` (FastAPI backend, Plan 1) and `web/` (Next.js static export, Plan 2) are complete; `card-generator/` renders the deck art offline; the Capacitor Android wrapper (Plan 3) is next. Design spec and plans are in `docs/superpowers/`; `docs/status-*.md` lists known gaps and owner deploy steps (latest: `docs/status-2026-11-05-web-complete.md`). `api/README.md` and `web/README.md` have the env-var tables, run/deploy steps and the contracts each side relies on, so read them before changing those areas.
+
+## Commands (run from `web/`)
+
+```bash
+npm ci
+npm run dev                          # http://localhost:3000 against NEXT_PUBLIC_API_URL (default http://localhost:8000)
+npm run lint && npm run typecheck
+npm test -- --run                    # Vitest + MSW (onUnhandledFrame: "error" — every request must be mocked)
+npm run build                        # prebuild: sync-cards (from ../api) -> make-icons -> make-sw; static export to out/
+CI=true npm run e2e                  # Playwright against route mocks; needs PLAYWRIGHT_BROWSERS_PATH or `npx playwright install chromium`
+```
+
+Web conventions: `?id=` query params instead of dynamic routes (static export); every `useSearchParams` sits inside `<Suspense>`; `NEXT_PUBLIC_*` env is read as literal `process.env.NEXT_PUBLIC_X` only; API errors arrive as `ApiError(status, code, message)` from `src/lib/api.ts`; SSE is parsed by `src/lib/sse.ts` and driven by `<ReadingStream>`; `public/sw.js` is generated from `scripts/sw.src.js` (edit the source).
 
 ## Commands (run from `api/`)
 
