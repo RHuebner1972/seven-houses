@@ -8,6 +8,7 @@ import { Providers as RealProviders } from "@/components/providers";
 import { ReadingStream } from "@/components/reading-stream";
 import TodayPage from "@/app/page";
 import { apiBase } from "@/lib/api";
+import { ApiError, OFFLINE_COPY } from "@/lib/errors";
 import { localDate } from "@/lib/tz";
 import type { Reading, ReadingSummary } from "@/lib/types";
 
@@ -23,6 +24,11 @@ vi.mock("@/lib/tz", async (importOriginal) => {
 });
 
 const BASE = apiBase();
+const jwt = (sub: string) => {
+  const b64 = (o: object) =>
+    btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none" })}.${b64({ sub })}.sig`;
+};
 let qc: QueryClient;
 function Providers({ children }: { children: ReactNode }) {
   return <RealProviders queryClient={qc}>{children}</RealProviders>;
@@ -40,7 +46,7 @@ beforeEach(() => {
   log = [];
   tzMock.today = undefined;
   localStorage.clear();
-  localStorage.setItem("sh.token", "tok");
+  localStorage.setItem("sh.token", jwt("u1"));
 });
 afterEach(() => {
   server.resetHandlers();
@@ -116,6 +122,7 @@ test("tap flips the card and streams today's reading", async () => {
     cards: [{ card_id: "major-00-fool", reversed: false }],
   });
   expect(cached.localDate).toBe(localDate());
+  expect(cached.userId).toBe("u1");
   expect(screen.getByText(/The Fool/, { selector: "p" })).toHaveTextContent(/upright/i);
   expect(screen.getByRole("link", { name: /go deeper/i })).toHaveAttribute("href", "/reading/new/");
 });
@@ -140,7 +147,10 @@ test("existing complete daily renders without streaming", async () => {
 });
 
 test("a cached daily for today renders instantly without a request", async () => {
-  localStorage.setItem("sh.lastDaily", JSON.stringify({ localDate: localDate(), reading: reading() }));
+  localStorage.setItem(
+    "sh.lastDaily",
+    JSON.stringify({ userId: "u1", localDate: localDate(), reading: reading() }),
+  );
   server.use(onDaily(() => HttpResponse.json({ reading: reading() })));
   render(
     <Providers>
@@ -232,7 +242,7 @@ test("409 gives up after 30 polls with a retry", async () => {
 test("a new local date invalidates the cached daily", async () => {
   localStorage.setItem(
     "sh.lastDaily",
-    JSON.stringify({ localDate: "2000-01-01", reading: reading({ text: "Old news." }) }),
+    JSON.stringify({ userId: "u1", localDate: "2000-01-01", reading: reading({ text: "Old news." }) }),
   );
   server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r10", text: "Fresh today." }) })));
   render(
@@ -463,4 +473,103 @@ test("ReadingStream under StrictMode calls source once and never fires onAbort",
   expect(await screen.findByText("Once")).toBeInTheDocument();
   expect(source).toHaveBeenCalledTimes(1);
   expect(onAbort).not.toHaveBeenCalled();
+});
+
+test("ReadingStream: onSettled fires exactly once, after done, error or abort", async () => {
+  const settledDone = vi.fn();
+  const doneSource = async () => sse([frame("done", { reading_id: "d" })]).body!;
+  render(<ReadingStream source={doneSource} onSettled={settledDone} />);
+  await waitFor(() => expect(settledDone).toHaveBeenCalledWith("done"));
+  expect(settledDone).toHaveBeenCalledTimes(1);
+
+  const settledErr = vi.fn();
+  const errSource = async () => sse([frame("error", { code: "x", message: "Nope." })]).body!;
+  render(<ReadingStream source={errSource} onSettled={settledErr} />);
+  await screen.findByText("Nope.");
+  expect(settledErr).toHaveBeenCalledTimes(1);
+  expect(settledErr).toHaveBeenCalledWith("error");
+
+  const settledAbort = vi.fn();
+  const onAbort = vi.fn();
+  const openSource = async () =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode(frame("delta", { text: "Half" })));
+      },
+    });
+  const { unmount } = render(<ReadingStream source={openSource} onAbort={onAbort} onSettled={settledAbort} />);
+  await screen.findByText("Half");
+  unmount();
+  expect(onAbort).toHaveBeenCalledTimes(1);
+  expect(settledAbort).toHaveBeenCalledTimes(1);
+  expect(settledAbort).toHaveBeenCalledWith("abort");
+  // onAbort precedes onSettled
+  expect(onAbort.mock.invocationCallOrder[0]).toBeLessThan(settledAbort.mock.invocationCallOrder[0]);
+
+  // a source that steps aside (AbortError) is not a settlement: the caller took over
+  const settledAside = vi.fn();
+  const aside = async () => {
+    throw new DOMException("aside", "AbortError");
+  };
+  render(<ReadingStream source={aside} onSettled={settledAside} />);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(settledAside).not.toHaveBeenCalled();
+});
+
+test("another user's cached daily is not shown; the card is drawn afresh", async () => {
+  localStorage.setItem(
+    "sh.lastDaily",
+    JSON.stringify({ userId: "someone-else", localDate: localDate(), reading: reading({ text: "Not yours." }) }),
+  );
+  server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r11", text: "Yours today." }) })));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  expect(await screen.findByRole("button", { name: /reveal/i })).toBeInTheDocument();
+  expect(screen.queryByText("Not yours.")).toBeNull();
+  await reveal();
+  expect(await screen.findByText("Yours today.")).toBeInTheDocument();
+  expect(count("POST", "/daily")).toBe(1);
+  expect(JSON.parse(localStorage.getItem("sh.lastDaily")!)).toMatchObject({ userId: "u1", reading: { id: "r11" } });
+});
+
+test("a pre-scoping cache entry (no userId) is ignored", async () => {
+  localStorage.setItem("sh.lastDaily", JSON.stringify({ localDate: localDate(), reading: reading({ text: "Legacy." }) }));
+  server.use(onDaily(() => HttpResponse.json({ reading: reading({ id: "r12", text: "Scoped." }) })));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  expect(await screen.findByRole("button", { name: /reveal/i })).toBeInTheDocument();
+  expect(screen.queryByText("Legacy.")).toBeNull();
+  await reveal();
+  expect(await screen.findByText("Scoped.")).toBeInTheDocument();
+});
+
+test("a network failure reads as being offline, not as a raw fetch error", async () => {
+  let n = 0;
+  server.use(onDaily(() => (++n === 1 ? HttpResponse.error() : HttpResponse.json({ reading: reading() }))));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  await reveal();
+  expect(await screen.findByText(OFFLINE_COPY)).toBeInTheDocument();
+  expect(screen.queryByText(/failed to fetch/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  expect(await screen.findByText("Stored wisdom.")).toBeInTheDocument();
+});
+
+test("ReadingStream: a network ApiError shows the offline copy", async () => {
+  const onError = vi.fn();
+  const source = async () => {
+    throw new ApiError(0, "network", "Failed to fetch");
+  };
+  render(<ReadingStream source={source} onError={onError} />);
+  expect(await screen.findByText(OFFLINE_COPY)).toBeInTheDocument();
+  expect(onError).toHaveBeenCalledWith({ code: "network", message: OFFLINE_COPY });
 });

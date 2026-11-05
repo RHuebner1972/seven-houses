@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useApi } from "@/components/providers";
+import { useApi, useAuth } from "@/components/providers";
 import type { CardsEvent, StreamError } from "@/components/reading-stream";
-import { ApiError, isCode } from "@/lib/errors";
+import { parseDailyCache, readDailyCache, writeDailyCache } from "@/lib/daily-cache";
+import { describeError, isCode } from "@/lib/errors";
 import { localDate, localTimeZone } from "@/lib/tz";
 import type { DrawnCard, Reading } from "@/lib/types";
 
-export const DAILY_CACHE_KEY = "sh.lastDaily";
 export const POLL_INTERVAL_MS = 2000;
 export const POLL_MAX_ATTEMPTS = 30;
 const GENERATION_FAILED: StreamError = {
@@ -18,46 +18,18 @@ const STILL_PREPARING: StreamError = { code: "still_preparing", message: "Still 
 
 export type DailyState = "idle" | "cached" | "streaming" | "complete" | "waiting" | "error";
 
-type Cached = { localDate: string; reading: Reading };
-
-function parseCache(raw: string | null): Reading | null {
-  try {
-    if (!raw) return null;
-    const c = JSON.parse(raw) as Cached;
-    return c?.localDate === localDate() && c.reading?.cards?.length ? c.reading : null;
-  } catch {
-    return null;
-  }
-}
-
-/** `day` is the local date the reading belongs to, never the (possibly later) write time. */
-function writeCache(reading: Reading, day: string) {
-  try {
-    const c: Cached = { localDate: day, reading };
-    localStorage.setItem(DAILY_CACHE_KEY, JSON.stringify(c));
-  } catch {
-    /* storage full or unavailable */
-  }
-}
-
 // The cache is an external store: read it with useSyncExternalStore so the prerendered HTML
 // (server snapshot: nothing cached) hydrates cleanly and other tabs' writes are picked up.
 const subscribeStorage = (cb: () => void) => {
   window.addEventListener("storage", cb);
   return () => window.removeEventListener("storage", cb);
 };
-const rawCache = () => {
-  try {
-    return localStorage.getItem(DAILY_CACHE_KEY);
-  } catch {
-    return null;
-  }
-};
 
 const abortError = () => new DOMException("Handled by useDaily", "AbortError");
 
 export function useDaily() {
   const api = useApi();
+  const { userId } = useAuth();
   const [phase, setState] = useState<Exclude<DailyState, "cached">>("idle");
   const [reading, setReading] = useState<Reading>();
   const [card, setCard] = useState<DrawnCard>();
@@ -72,6 +44,11 @@ export function useDaily() {
   // local date captured when the reveal starts: the day the server assigns the reading to
   const dayRef = useRef<string>("");
   const restartedRef = useRef(false);
+  // who the reading is for, read at write time so callbacks need not re-bind on sign-in
+  const userIdRef = useRef(userId);
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -88,9 +65,10 @@ export function useDaily() {
     };
   }, [stopPolling]);
 
+  // `day` is the local date the reading belongs to, never the (possibly later) write time.
   const complete = useCallback((r: Reading, day: string) => {
     if (!alive.current) return;
-    writeCache(r, day);
+    writeDailyCache({ userId: userIdRef.current, localDate: day, reading: r });
     cardRef.current = r.cards[0];
     textRef.current = r.text;
     setReading(r);
@@ -175,10 +153,8 @@ export function useDaily() {
         if (signal.aborted) throw e;
         if (isCode(e, "generation_in_progress")) {
           if (alive.current) poll();
-        } else if (e instanceof ApiError) {
-          fail({ code: e.code, message: e.message });
         } else {
-          fail({ code: "network", message: (e as Error | null)?.message || "Something went wrong." });
+          fail(describeError(e, "Something went wrong."));
         }
         throw abortError();
       }
@@ -238,8 +214,8 @@ export function useDaily() {
 
   const retry = start;
 
-  const raw = useSyncExternalStore(subscribeStorage, rawCache, () => null);
-  const cached = useMemo(() => parseCache(raw), [raw]);
+  const raw = useSyncExternalStore(subscribeStorage, readDailyCache, () => null);
+  const cached = useMemo(() => parseDailyCache(raw, userId, localDate()), [raw, userId]);
 
   if (phase === "idle" && cached) {
     return {

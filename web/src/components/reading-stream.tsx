@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "@/lib/errors";
+import { describeError } from "@/lib/errors";
 import { parseSse } from "@/lib/sse";
 import type { SseEvent } from "@/lib/types";
 
 export type StreamError = { code: string; message: string };
 export type CardsEvent = Extract<SseEvent, { event: "cards" }>["data"];
+export type StreamOutcome = "done" | "error" | "abort";
 
 export type ReadingStreamProps = {
   source: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array>>;
@@ -15,6 +16,8 @@ export type ReadingStreamProps = {
   onDone?(readingId: string): void;
   onError?(err: StreamError): void;
   onAbort?(deliveredText: string): void;
+  /** Fired exactly once per attempt after onDone, onError or onAbort — whichever ends it. */
+  onSettled?(outcome: StreamOutcome): void;
   initialText?: string;
 };
 
@@ -53,11 +56,18 @@ export function ReadingStream(props: ReadingStreamProps) {
     const controller = new AbortController();
     controllerRef.current = controller;
 
+    let settled = false;
+    const settle = (outcome: StreamOutcome) => {
+      if (settled) return;
+      settled = true;
+      cbs.current.onSettled?.(outcome);
+    };
     const fail = (err: StreamError) => {
       finished = true;
       setStatus("error");
       setError(err);
       cbs.current.onError?.(err);
+      settle("error");
     };
 
     (async () => {
@@ -90,6 +100,7 @@ export function ReadingStream(props: ReadingStreamProps) {
               finished = true;
               setStatus("done");
               cbs.current.onDone?.(ev.data.reading_id);
+              settle("done");
               return;
             case "error":
               fail(ev.data);
@@ -102,11 +113,7 @@ export function ReadingStream(props: ReadingStreamProps) {
           finished = true;
           return;
         }
-        fail(
-          e instanceof ApiError
-            ? { code: e.code, message: e.message }
-            : { code: "network", message: (e as Error | null)?.message || INTERRUPTED.message },
-        );
+        fail(describeError(e, INTERRUPTED.message));
       }
     })();
 
@@ -114,7 +121,10 @@ export function ReadingStream(props: ReadingStreamProps) {
       active = false;
       controller.abort();
       if (controllerRef.current === controller) controllerRef.current = null;
-      if (started && !finished) cbs.current.onAbort?.(textRef.current);
+      if (started && !finished) {
+        cbs.current.onAbort?.(textRef.current);
+        settle("abort");
+      }
     };
   }, [attempt]);
 

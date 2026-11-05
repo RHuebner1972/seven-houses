@@ -6,6 +6,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Providers as RealProviders } from "@/components/providers";
 import ReadingNewPage from "@/app/reading/new/page";
+import { BalancePill } from "@/components/balance-pill";
 import { apiBase } from "@/lib/api";
 import type { Profile, Spread } from "@/lib/types";
 
@@ -381,4 +382,39 @@ test("question is capped at 500 characters", async () => {
   expect(box).toHaveAttribute("maxlength", "500");
   fireEvent.change(box, { target: { value: "a".repeat(120) } });
   expect(screen.getByText("120 / 500")).toBeInTheDocument();
+});
+
+test("an error event re-reads the balance (the server refunds the spread)", async () => {
+  server.use(
+    ...baseHandlers(),
+    onReadings(() => sse([frame("error", { code: "generation_failed", message: "The stars went quiet." })])),
+  );
+  setup();
+  await screen.findByRole("radio", { name: /Three Card/ });
+  await waitFor(() => expect(count("GET", "/me")).toBe(1));
+  await begin();
+  expect(await screen.findByText("The stars went quiet.")).toBeInTheDocument();
+  await waitFor(() => expect(count("GET", "/me")).toBe(2));
+});
+
+test("leaving mid-stream re-reads the balance once the stream is abandoned", async () => {
+  server.use(
+    ...baseHandlers(),
+    http.post(`${BASE}/readings`, () => sse([frame("delta", { text: "Midway" })], { close: false })),
+  );
+  const { rerender } = render(
+    <Providers>
+      <BalancePill />
+      <ReadingNewPage />
+    </Providers>,
+  );
+  await begin();
+  expect(await screen.findByText(/Midway/)).toBeInTheDocument();
+  await waitFor(() => expect(count("GET", "/me")).toBe(1));
+  rerender(
+    <Providers>
+      <BalancePill />
+    </Providers>,
+  );
+  await waitFor(() => expect(count("GET", "/me")).toBe(2));
 });

@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Providers as RealProviders } from "@/components/providers";
 import JournalPage from "@/app/journal/page";
 import ReadingPage from "@/app/reading/page";
+import { BalancePill } from "@/components/balance-pill";
 import { apiBase } from "@/lib/api";
 import { POLL_INTERVAL_MS, POLL_MAX_MS } from "@/hooks/use-readings";
 import type { Reading, ReadingSummary, Spread } from "@/lib/types";
@@ -366,4 +367,39 @@ test("pending detail stops polling after the cap and offers to check again", asy
   expect(calls).toBe(after);
   fireEvent.click(screen.getByRole("button", { name: /check again/i }));
   await waitFor(() => expect(calls).toBe(after + 1));
+});
+
+test("retrying a failed reading re-reads the balance when the stream settles", async () => {
+  let status = "failed";
+  server.use(
+    spreadsHandler,
+    http.get(`${BASE}/me`, () => {
+      log.push({ method: "GET", path: "/me" });
+      return HttpResponse.json({ user_id: "u1", email: null, anon: true, balance: 2 });
+    }),
+    http.get(`${BASE}/readings/r3`, () =>
+      HttpResponse.json(full(failed, "A quiet morning", { status: status as Reading["status"] })),
+    ),
+    http.post(`${BASE}/readings/r3/retry`, () => {
+      status = "complete";
+      return sse([
+        frame("cards", { reading_id: "r3", cost: 0, cards: failed.cards }),
+        frame("delta", { text: "then light." }),
+        frame("done", { reading_id: "r3" }),
+      ]);
+    }),
+  );
+  nav.search = "id=r3";
+  render(
+    <Providers>
+      <BalancePill />
+      <ReadingPage />
+    </Providers>,
+  );
+  expect(await screen.findByText(/didn't complete/i)).toBeInTheDocument();
+  await waitFor(() => expect(count("GET", "/me")).toBe(1));
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  await waitFor(() => expect(screen.queryByText(/didn't complete/i)).toBeNull());
+  // cards and done each refresh the balance
+  await waitFor(() => expect(count("GET", "/me")).toBeGreaterThanOrEqual(2));
 });
