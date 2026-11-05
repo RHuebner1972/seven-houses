@@ -38,7 +38,7 @@ export default function StorePage() {
   const packages = useQuery({
     queryKey: [...PACKAGES_KEY, userId],
     queryFn: () => billing.packages(),
-    enabled: ready && !!userId,
+    enabled: ready && !!userId && !billing.unavailable,
     staleTime: 5 * 60_000,
   });
 
@@ -68,7 +68,13 @@ export default function StorePage() {
 
       <PurchaseStatus phase={phase} />
 
-      {packages.isPending ? (
+      {billing.unavailable ? (
+        <p role="alert" className="mt-8 text-gold-hi">
+          Store unavailable right now. Please check back soon.
+        </p>
+      ) : null}
+
+      {!billing.unavailable && packages.isPending ? (
         <div className="mt-8">
           <Spinner label="Fetching packs…" />
         </div>

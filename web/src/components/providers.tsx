@@ -207,24 +207,30 @@ export function AuthProvider({
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-const BillingContext = createContext<BillingProviderApi | null>(null);
+export interface BillingValue extends BillingProviderApi {
+  /** A production build fell back to mock billing: show the store as unavailable. */
+  unavailable: boolean;
+}
+
+const BillingContext = createContext<BillingValue | null>(null);
 
 /**
  * The selected billing backend, already bound to the signed-in user: `packages()` and
  * `purchase()` wait for `configure(userId)` to finish, so pages need not sequence it.
  */
-export function useBilling(): BillingProviderApi {
+export function useBilling(): BillingValue {
   const ctx = useContext(BillingContext);
   if (!ctx) throw new Error("useBilling must be used within <BillingProvider>");
   return ctx;
 }
 
-function defaultBilling(): BillingProviderApi {
-  // Literal `process.env.NEXT_PUBLIC_*` reads so the static build inlines them.
+function defaultBilling(): { provider: BillingProviderApi; unavailable: boolean } {
+  // Literal `process.env.*` reads so the static build inlines them.
   return selectBillingProvider({
     NEXT_PUBLIC_BILLING: process.env.NEXT_PUBLIC_BILLING,
     NEXT_PUBLIC_RC_WEB_KEY: process.env.NEXT_PUBLIC_RC_WEB_KEY,
-  }).provider;
+    NODE_ENV: process.env.NODE_ENV,
+  });
 }
 
 export function BillingProvider({
@@ -235,7 +241,9 @@ export function BillingProvider({
   provider?: BillingProviderApi;
 }) {
   const { userId } = useAuth();
-  const [backend] = useState(() => provider ?? defaultBilling());
+  const [{ provider: backend, unavailable }] = useState(() =>
+    provider ? { provider, unavailable: false } : defaultBilling(),
+  );
   // The configure() in flight (or settled) for a given user id; one per id, re-run on change.
   const bound = useRef<{ userId: string; promise: Promise<void> } | null>(null);
 
@@ -262,8 +270,9 @@ export function BillingProvider({
     });
   }, [userId, bind]);
 
-  const value = useMemo<BillingProviderApi>(
+  const value = useMemo<BillingValue>(
     () => ({
+      unavailable,
       configure: bind,
       async packages() {
         if (!userId) throw new Error("billing: no user yet");
@@ -276,7 +285,7 @@ export function BillingProvider({
         return backend.purchase(pkg);
       },
     }),
-    [backend, bind, userId],
+    [backend, bind, unavailable, userId],
   );
 
   return <BillingContext.Provider value={value}>{children}</BillingContext.Provider>;

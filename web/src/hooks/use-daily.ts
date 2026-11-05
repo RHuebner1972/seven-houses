@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useApi, useAuth } from "@/components/providers";
 import type { CardsEvent, StreamError } from "@/components/reading-stream";
 import { parseDailyCache, readDailyCache, writeDailyCache } from "@/lib/daily-cache";
-import { ApiError, isCode } from "@/lib/errors";
+import { describeError, isCode } from "@/lib/errors";
 import { localDate, localTimeZone } from "@/lib/tz";
 import type { DrawnCard, Reading } from "@/lib/types";
 
@@ -153,10 +153,8 @@ export function useDaily() {
         if (signal.aborted) throw e;
         if (isCode(e, "generation_in_progress")) {
           if (alive.current) poll();
-        } else if (e instanceof ApiError) {
-          fail({ code: e.code, message: e.message });
         } else {
-          fail({ code: "network", message: (e as Error | null)?.message || "Something went wrong." });
+          fail(describeError(e, "Something went wrong."));
         }
         throw abortError();
       }

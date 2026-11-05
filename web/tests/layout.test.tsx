@@ -73,3 +73,25 @@ test("RegisterSw registers /sw.js in production and toasts on update", async () 
   workerListeners.statechange();
   expect(await findByText(/Seventh House updated/)).toBeInTheDocument();
 });
+
+test("RegisterSw stays out of the Capacitor shell even in production", async () => {
+  vi.stubEnv("NODE_ENV", "production");
+  const { RegisterSw } = await import("@/components/register-sw");
+  const register = vi.fn(() => Promise.resolve({ addEventListener() {} }));
+  vi.stubGlobal("navigator", {
+    ...navigator,
+    serviceWorker: { register, addEventListener() {}, removeEventListener() {} },
+  });
+  window.Capacitor = { isNativePlatform: () => true };
+  try {
+    render(
+      <ToastProvider>
+        <RegisterSw />
+      </ToastProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(register).not.toHaveBeenCalled();
+  } finally {
+    delete window.Capacitor;
+  }
+});

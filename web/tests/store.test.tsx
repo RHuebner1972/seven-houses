@@ -340,6 +340,43 @@ test("selectBillingProvider honours NEXT_PUBLIC_BILLING and falls back on the RC
   );
 });
 
+test("mock billing in a production build is flagged unavailable; elsewhere it is fine", () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(selectBillingProvider({ NODE_ENV: "production" })).toMatchObject({ kind: "mock", unavailable: true });
+  expect(selectBillingProvider({ NODE_ENV: "production", NEXT_PUBLIC_BILLING: "revenuecat" })).toMatchObject({
+    kind: "mock",
+    unavailable: true,
+  });
+  expect(selectBillingProvider({ NODE_ENV: "production", NEXT_PUBLIC_RC_WEB_KEY: "rcb_x" })).toMatchObject({
+    kind: "revenuecat",
+    unavailable: false,
+  });
+  expect(selectBillingProvider({ NODE_ENV: "development" })).toMatchObject({ kind: "mock", unavailable: false });
+  expect(selectBillingProvider({ NODE_ENV: "test", NEXT_PUBLIC_BILLING: "mock" })).toMatchObject({
+    kind: "mock",
+    unavailable: false,
+  });
+});
+
+test("a production build without a billing key shows the store as unavailable instead of mock packs", async () => {
+  vi.stubEnv("NODE_ENV", "production");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  server.use(meHandler([me()]));
+  try {
+    render(
+      <RealProviders queryClient={qc}>
+        <StorePage />
+      </RealProviders>,
+    );
+    expect(await screen.findByText(/store unavailable right now/i)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryAllByRole("button", { name: /^Buy/ })).toHaveLength(0);
+    expect(screen.queryByRole("status")).not.toHaveTextContent(/fetching packs/i);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 test("mock provider lists 5/15/40 and resolves purchases with a transaction id", async () => {
   const p = createMockBilling();
   await p.configure("u1");

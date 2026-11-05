@@ -156,7 +156,7 @@ test("signOut clears the token and mints a new anonymous one", async () => {
   await act(async () => {
     p = cap.auth!.signOut();
   });
-  expect(screen.getByLabelText("Credit balance")).toHaveTextContent("—");
+  expect(screen.getByText("Credit balance:").parentElement).toHaveTextContent("—");
   await act(async () => {
     await p;
   });
@@ -199,7 +199,7 @@ test("balance pill shows a dash while loading", async () => {
       <BalancePill />
     </Providers>,
   );
-  expect(screen.getByLabelText("Credit balance")).toHaveTextContent("—");
+  expect(screen.getByText("Credit balance:").parentElement).toHaveTextContent("—");
   // let the (hanging) bootstrap request reach this test's handler before the next test starts
   await new Promise((r) => setTimeout(r, 30));
 });

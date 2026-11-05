@@ -44,7 +44,7 @@ test("reading: cast a chart, run a chart-informed Celtic Cross, find it in the j
   expect(api.calls.post["/readings"]).toBe(1);
   expect(api.state.readings[0].chart_id).toBe("p1");
   // the spread was debited server-side and the UI re-read the balance
-  await expect(page.getByLabel("Credit balance")).toHaveText(/0$/);
+  await expect(page.getByText("Credit balance:").locator("..")).toHaveText(/0$/);
 
   // --- journal ---
   await page.getByRole("link", { name: "Open journal" }).click();

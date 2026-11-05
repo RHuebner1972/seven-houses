@@ -45,6 +45,6 @@ test("purchase: anonymous buyer signs in by magic link, buys, sees credits land 
   api.simulateWebhook(5);
   await expect(status).toHaveText("Your credits are in. Balance: 5.", { timeout: 10_000 });
   await expect(page.getByText("Your balance:")).toContainText("5");
-  await expect(page.getByLabel("Credit balance")).toHaveText(/5$/);
+  await expect(page.getByText("Credit balance:").locator("..")).toHaveText(/5$/);
   await expect(page.getByRole("button", BUY_STARTER)).toBeEnabled();
 });

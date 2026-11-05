@@ -8,6 +8,7 @@ import { Providers as RealProviders } from "@/components/providers";
 import { ReadingStream } from "@/components/reading-stream";
 import TodayPage from "@/app/page";
 import { apiBase } from "@/lib/api";
+import { ApiError, OFFLINE_COPY } from "@/lib/errors";
 import { localDate } from "@/lib/tz";
 import type { Reading, ReadingSummary } from "@/lib/types";
 
@@ -546,4 +547,29 @@ test("a pre-scoping cache entry (no userId) is ignored", async () => {
   expect(screen.queryByText("Legacy.")).toBeNull();
   await reveal();
   expect(await screen.findByText("Scoped.")).toBeInTheDocument();
+});
+
+test("a network failure reads as being offline, not as a raw fetch error", async () => {
+  let n = 0;
+  server.use(onDaily(() => (++n === 1 ? HttpResponse.error() : HttpResponse.json({ reading: reading() }))));
+  render(
+    <Providers>
+      <TodayPage />
+    </Providers>,
+  );
+  await reveal();
+  expect(await screen.findByText(OFFLINE_COPY)).toBeInTheDocument();
+  expect(screen.queryByText(/failed to fetch/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  expect(await screen.findByText("Stored wisdom.")).toBeInTheDocument();
+});
+
+test("ReadingStream: a network ApiError shows the offline copy", async () => {
+  const onError = vi.fn();
+  const source = async () => {
+    throw new ApiError(0, "network", "Failed to fetch");
+  };
+  render(<ReadingStream source={source} onError={onError} />);
+  expect(await screen.findByText(OFFLINE_COPY)).toBeInTheDocument();
+  expect(onError).toHaveBeenCalledWith({ code: "network", message: OFFLINE_COPY });
 });

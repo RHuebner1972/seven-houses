@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "@/lib/errors";
+import { describeError } from "@/lib/errors";
 import { parseSse } from "@/lib/sse";
 import type { SseEvent } from "@/lib/types";
 
@@ -113,11 +113,7 @@ export function ReadingStream(props: ReadingStreamProps) {
           finished = true;
           return;
         }
-        fail(
-          e instanceof ApiError
-            ? { code: e.code, message: e.message }
-            : { code: "network", message: (e as Error | null)?.message || INTERRUPTED.message },
-        );
+        fail(describeError(e, INTERRUPTED.message));
       }
     })();
 
