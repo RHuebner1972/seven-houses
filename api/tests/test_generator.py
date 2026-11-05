@@ -72,9 +72,16 @@ def test_client_has_bounded_timeouts_and_one_retry(fake_anthropic):
     fake_anthropic.chunks = ["a"]
     list(stream_reading("m", [], max_tokens=10))
     timeout = fake_anthropic.client_kwargs["timeout"]
-    assert isinstance(timeout, httpx.Timeout)
+    assert isinstance(timeout, anthropic.Timeout)
     assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (10.0, 60.0, 10.0, 10.0)
     assert fake_anthropic.client_kwargs["max_retries"] == 1
+
+
+def test_client_timeout_is_accepted_by_the_real_sdk():
+    # fake_anthropic replaces the client, so only this catches a timeout type the SDK rejects.
+    from app.readings.generator import CLIENT_TIMEOUT
+
+    anthropic.Anthropic(api_key="x", timeout=CLIENT_TIMEOUT, max_retries=1)
 
 
 def test_truncated_paid_reply_raises(fake_anthropic):

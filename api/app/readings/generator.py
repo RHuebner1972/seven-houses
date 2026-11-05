@@ -2,14 +2,13 @@ from collections.abc import Generator
 from dataclasses import dataclass
 
 import anthropic
-import httpx
 
 from app.config import get_settings
 from app.readings.prompts import FOOTER, SYSTEM_PROMPT
 
 # read= bounds the gap between streamed chunks; the overall wall clock is bounded by
 # run_generation's deadline.
-CLIENT_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+CLIENT_TIMEOUT = anthropic.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
 
 
 class GenerationError(Exception):

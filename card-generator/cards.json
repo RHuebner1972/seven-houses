@@ -1,0 +1,1029 @@
+[
+  {
+    "id": "major-00-fool",
+    "name": "The Fool",
+    "arcana": "major",
+    "suit": null,
+    "number": 0,
+    "upright": [
+      "fresh start",
+      "leap of faith",
+      "open curiosity",
+      "playful risk"
+    ]
+  },
+  {
+    "id": "major-01-magician",
+    "name": "The Magician",
+    "arcana": "major",
+    "suit": null,
+    "number": 1,
+    "upright": [
+      "focused will",
+      "resourcefulness",
+      "skill put to use",
+      "deliberate action"
+    ]
+  },
+  {
+    "id": "major-02-high-priestess",
+    "name": "The High Priestess",
+    "arcana": "major",
+    "suit": null,
+    "number": 2,
+    "upright": [
+      "inner knowing",
+      "quiet intuition",
+      "hidden depths",
+      "patient listening"
+    ]
+  },
+  {
+    "id": "major-03-empress",
+    "name": "The Empress",
+    "arcana": "major",
+    "suit": null,
+    "number": 3,
+    "upright": [
+      "nurturing abundance",
+      "creative bloom",
+      "sensual comfort",
+      "growth"
+    ]
+  },
+  {
+    "id": "major-04-emperor",
+    "name": "The Emperor",
+    "arcana": "major",
+    "suit": null,
+    "number": 4,
+    "upright": [
+      "firm structure",
+      "steady authority",
+      "protection",
+      "disciplined order"
+    ]
+  },
+  {
+    "id": "major-05-hierophant",
+    "name": "The Hierophant",
+    "arcana": "major",
+    "suit": null,
+    "number": 5,
+    "upright": [
+      "shared tradition",
+      "mentorship",
+      "established practice",
+      "belonging"
+    ]
+  },
+  {
+    "id": "major-06-lovers",
+    "name": "The Lovers",
+    "arcana": "major",
+    "suit": null,
+    "number": 6,
+    "upright": [
+      "heartfelt union",
+      "aligned values",
+      "meaningful choice",
+      "honest bond"
+    ]
+  },
+  {
+    "id": "major-07-chariot",
+    "name": "The Chariot",
+    "arcana": "major",
+    "suit": null,
+    "number": 7,
+    "upright": [
+      "driven momentum",
+      "self-mastery",
+      "hard-won victory",
+      "determined direction"
+    ]
+  },
+  {
+    "id": "major-08-strength",
+    "name": "Strength",
+    "arcana": "major",
+    "suit": null,
+    "number": 8,
+    "upright": [
+      "gentle courage",
+      "patience with oneself",
+      "quiet resilience",
+      "compassion over force"
+    ]
+  },
+  {
+    "id": "major-09-hermit",
+    "name": "The Hermit",
+    "arcana": "major",
+    "suit": null,
+    "number": 9,
+    "upright": [
+      "solitary reflection",
+      "inner guidance",
+      "withdrawal to learn",
+      "distilled wisdom"
+    ]
+  },
+  {
+    "id": "major-10-wheel-of-fortune",
+    "name": "Wheel of Fortune",
+    "arcana": "major",
+    "suit": null,
+    "number": 10,
+    "upright": [
+      "turning cycles",
+      "timely change",
+      "fortune shifting",
+      "larger patterns"
+    ]
+  },
+  {
+    "id": "major-11-justice",
+    "name": "Justice",
+    "arcana": "major",
+    "suit": null,
+    "number": 11,
+    "upright": [
+      "fair reckoning",
+      "clear-eyed truth",
+      "accountability",
+      "balanced decision"
+    ]
+  },
+  {
+    "id": "major-12-hanged-man",
+    "name": "The Hanged Man",
+    "arcana": "major",
+    "suit": null,
+    "number": 12,
+    "upright": [
+      "willing pause",
+      "shifted perspective",
+      "surrender",
+      "suspended judgment"
+    ]
+  },
+  {
+    "id": "major-13-death",
+    "name": "Death",
+    "arcana": "major",
+    "suit": null,
+    "number": 13,
+    "upright": [
+      "necessary ending",
+      "clearing away",
+      "deep transformation",
+      "closing a chapter"
+    ]
+  },
+  {
+    "id": "major-14-temperance",
+    "name": "Temperance",
+    "arcana": "major",
+    "suit": null,
+    "number": 14,
+    "upright": [
+      "measured blending",
+      "patience",
+      "moderation",
+      "steady healing"
+    ]
+  },
+  {
+    "id": "major-15-devil",
+    "name": "The Devil",
+    "arcana": "major",
+    "suit": null,
+    "number": 15,
+    "upright": [
+      "binding habits",
+      "shadow desires",
+      "material fixation",
+      "chosen chains"
+    ]
+  },
+  {
+    "id": "major-16-tower",
+    "name": "The Tower",
+    "arcana": "major",
+    "suit": null,
+    "number": 16,
+    "upright": [
+      "sudden upheaval",
+      "false structures falling",
+      "shock of truth",
+      "forced clearing"
+    ]
+  },
+  {
+    "id": "major-17-star",
+    "name": "The Star",
+    "arcana": "major",
+    "suit": null,
+    "number": 17,
+    "upright": [
+      "renewed hope",
+      "gentle healing",
+      "calm faith",
+      "quiet inspiration"
+    ]
+  },
+  {
+    "id": "major-18-moon",
+    "name": "The Moon",
+    "arcana": "major",
+    "suit": null,
+    "number": 18,
+    "upright": [
+      "dreamlike uncertainty",
+      "subconscious tides",
+      "illusion",
+      "intuitive fear"
+    ]
+  },
+  {
+    "id": "major-19-sun",
+    "name": "The Sun",
+    "arcana": "major",
+    "suit": null,
+    "number": 19,
+    "upright": [
+      "bright vitality",
+      "plain joy",
+      "success in the open",
+      "warm confidence"
+    ]
+  },
+  {
+    "id": "major-20-judgement",
+    "name": "Judgement",
+    "arcana": "major",
+    "suit": null,
+    "number": 20,
+    "upright": [
+      "honest reckoning",
+      "awakening call",
+      "release of the past",
+      "answering a vocation"
+    ]
+  },
+  {
+    "id": "major-21-world",
+    "name": "The World",
+    "arcana": "major",
+    "suit": null,
+    "number": 21,
+    "upright": [
+      "completion",
+      "integration",
+      "earned wholeness",
+      "cycle fulfilled"
+    ]
+  },
+  {
+    "id": "wands-01",
+    "name": "Ace of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 1,
+    "upright": [
+      "spark of inspiration",
+      "bold beginning",
+      "raw drive",
+      "new venture"
+    ]
+  },
+  {
+    "id": "wands-02",
+    "name": "Two of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 2,
+    "upright": [
+      "planning ahead",
+      "weighing horizons",
+      "personal vision",
+      "decision at the threshold"
+    ]
+  },
+  {
+    "id": "wands-03",
+    "name": "Three of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 3,
+    "upright": [
+      "expansion",
+      "foresight",
+      "ventures at sea",
+      "waiting for returns"
+    ]
+  },
+  {
+    "id": "wands-04",
+    "name": "Four of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 4,
+    "upright": [
+      "joyful milestone",
+      "stable footing",
+      "homecoming",
+      "communal celebration"
+    ]
+  },
+  {
+    "id": "wands-05",
+    "name": "Five of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 5,
+    "upright": [
+      "friendly rivalry",
+      "clashing ideas",
+      "scrappy competition",
+      "jostling for place"
+    ]
+  },
+  {
+    "id": "wands-06",
+    "name": "Six of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 6,
+    "upright": [
+      "public recognition",
+      "deserved victory",
+      "confident return",
+      "rising reputation"
+    ]
+  },
+  {
+    "id": "wands-07",
+    "name": "Seven of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 7,
+    "upright": [
+      "holding your ground",
+      "defending a position",
+      "standing firm",
+      "outnumbered resolve"
+    ]
+  },
+  {
+    "id": "wands-08",
+    "name": "Eight of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 8,
+    "upright": [
+      "swift movement",
+      "messages flying",
+      "momentum",
+      "rapid progress"
+    ]
+  },
+  {
+    "id": "wands-09",
+    "name": "Nine of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 9,
+    "upright": [
+      "battered persistence",
+      "last reserves",
+      "wary resilience",
+      "near the finish"
+    ]
+  },
+  {
+    "id": "wands-10",
+    "name": "Ten of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 10,
+    "upright": [
+      "heavy load",
+      "overcommitment",
+      "duty carried to the end",
+      "nearing relief"
+    ]
+  },
+  {
+    "id": "wands-11-page",
+    "name": "Page of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 11,
+    "upright": [
+      "eager explorer",
+      "enthusiastic news",
+      "curious spark",
+      "fledgling passion"
+    ]
+  },
+  {
+    "id": "wands-12-knight",
+    "name": "Knight of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 12,
+    "upright": [
+      "dashing pursuit",
+      "adventurous charge",
+      "magnetic energy",
+      "bold motion"
+    ]
+  },
+  {
+    "id": "wands-13-queen",
+    "name": "Queen of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 13,
+    "upright": [
+      "warm charisma",
+      "self-assured flair",
+      "vivid presence",
+      "generous spirit"
+    ]
+  },
+  {
+    "id": "wands-14-king",
+    "name": "King of Wands",
+    "arcana": "minor",
+    "suit": "wands",
+    "number": 14,
+    "upright": [
+      "visionary leadership",
+      "inspiring command",
+      "bold direction",
+      "mature drive"
+    ]
+  },
+  {
+    "id": "cups-01",
+    "name": "Ace of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 1,
+    "upright": [
+      "overflowing feeling",
+      "new affection",
+      "open heart",
+      "emotional renewal"
+    ]
+  },
+  {
+    "id": "cups-02",
+    "name": "Two of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 2,
+    "upright": [
+      "mutual attraction",
+      "balanced exchange",
+      "tender partnership",
+      "shared respect"
+    ]
+  },
+  {
+    "id": "cups-03",
+    "name": "Three of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 3,
+    "upright": [
+      "joyful gathering",
+      "friendship",
+      "shared celebration",
+      "community warmth"
+    ]
+  },
+  {
+    "id": "cups-04",
+    "name": "Four of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 4,
+    "upright": [
+      "apathy",
+      "contemplation",
+      "overlooked offer",
+      "inward drift"
+    ]
+  },
+  {
+    "id": "cups-05",
+    "name": "Five of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 5,
+    "upright": [
+      "grief over loss",
+      "dwelling on spilled cups",
+      "regret",
+      "mourning"
+    ]
+  },
+  {
+    "id": "cups-06",
+    "name": "Six of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 6,
+    "upright": [
+      "childhood nostalgia",
+      "kind gestures",
+      "familiar comfort",
+      "innocent generosity"
+    ]
+  },
+  {
+    "id": "cups-07",
+    "name": "Seven of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 7,
+    "upright": [
+      "tempting options",
+      "daydreams",
+      "wishful visions",
+      "a crowded imagination"
+    ]
+  },
+  {
+    "id": "cups-08",
+    "name": "Eight of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 8,
+    "upright": [
+      "walking away",
+      "search for deeper meaning",
+      "leaving the comfortable",
+      "quiet departure"
+    ]
+  },
+  {
+    "id": "cups-09",
+    "name": "Nine of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 9,
+    "upright": [
+      "satisfied wish",
+      "contentment",
+      "savoring success",
+      "pleasant fulfilment"
+    ]
+  },
+  {
+    "id": "cups-10",
+    "name": "Ten of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 10,
+    "upright": [
+      "family harmony",
+      "lasting happiness",
+      "emotional fulfilment",
+      "shared home"
+    ]
+  },
+  {
+    "id": "cups-11-page",
+    "name": "Page of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 11,
+    "upright": [
+      "tender message",
+      "imaginative curiosity",
+      "sensitive start",
+      "gentle surprise"
+    ]
+  },
+  {
+    "id": "cups-12-knight",
+    "name": "Knight of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 12,
+    "upright": [
+      "romantic offer",
+      "idealistic quest",
+      "graceful approach",
+      "heartfelt pursuit"
+    ]
+  },
+  {
+    "id": "cups-13-queen",
+    "name": "Queen of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 13,
+    "upright": [
+      "empathic depth",
+      "intuitive care",
+      "emotional steadiness",
+      "compassionate listening"
+    ]
+  },
+  {
+    "id": "cups-14-king",
+    "name": "King of Cups",
+    "arcana": "minor",
+    "suit": "cups",
+    "number": 14,
+    "upright": [
+      "emotional maturity",
+      "calm diplomacy",
+      "compassionate counsel",
+      "steady heart"
+    ]
+  },
+  {
+    "id": "swords-01",
+    "name": "Ace of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 1,
+    "upright": [
+      "sharp clarity",
+      "decisive truth",
+      "mental breakthrough",
+      "cutting through doubt"
+    ]
+  },
+  {
+    "id": "swords-02",
+    "name": "Two of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 2,
+    "upright": [
+      "stalemate",
+      "guarded choice",
+      "deliberate blindness",
+      "balanced tension"
+    ]
+  },
+  {
+    "id": "swords-03",
+    "name": "Three of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 3,
+    "upright": [
+      "heartbreak",
+      "painful truth",
+      "sorrow",
+      "wounding words"
+    ]
+  },
+  {
+    "id": "swords-04",
+    "name": "Four of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 4,
+    "upright": [
+      "rest",
+      "recovery",
+      "quiet retreat",
+      "mental recharge"
+    ]
+  },
+  {
+    "id": "swords-05",
+    "name": "Five of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 5,
+    "upright": [
+      "hollow victory",
+      "conflict at a cost",
+      "sore winners",
+      "bitter dispute"
+    ]
+  },
+  {
+    "id": "swords-06",
+    "name": "Six of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 6,
+    "upright": [
+      "passage to calmer water",
+      "gradual relief",
+      "leaving trouble behind",
+      "thoughtful transition"
+    ]
+  },
+  {
+    "id": "swords-07",
+    "name": "Seven of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 7,
+    "upright": [
+      "stealth",
+      "clever workaround",
+      "going alone",
+      "strategic evasion"
+    ]
+  },
+  {
+    "id": "swords-08",
+    "name": "Eight of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 8,
+    "upright": [
+      "self-imposed limits",
+      "feeling trapped",
+      "bound by fear",
+      "narrowed view"
+    ]
+  },
+  {
+    "id": "swords-09",
+    "name": "Nine of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 9,
+    "upright": [
+      "sleepless worry",
+      "nighttime dread",
+      "anxious replay",
+      "burdened conscience"
+    ]
+  },
+  {
+    "id": "swords-10",
+    "name": "Ten of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 10,
+    "upright": [
+      "painful ending",
+      "rock bottom",
+      "total defeat",
+      "a chapter finished"
+    ]
+  },
+  {
+    "id": "swords-11-page",
+    "name": "Page of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 11,
+    "upright": [
+      "alert curiosity",
+      "sharp questions",
+      "fresh ideas",
+      "watchful learner"
+    ]
+  },
+  {
+    "id": "swords-12-knight",
+    "name": "Knight of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 12,
+    "upright": [
+      "swift reasoning",
+      "forceful argument",
+      "ambitious charge",
+      "direct action"
+    ]
+  },
+  {
+    "id": "swords-13-queen",
+    "name": "Queen of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 13,
+    "upright": [
+      "candid insight",
+      "independent judgment",
+      "clear perception",
+      "honest boundaries"
+    ]
+  },
+  {
+    "id": "swords-14-king",
+    "name": "King of Swords",
+    "arcana": "minor",
+    "suit": "swords",
+    "number": 14,
+    "upright": [
+      "rigorous logic",
+      "fair authority",
+      "intellectual command",
+      "principled judgment"
+    ]
+  },
+  {
+    "id": "pentacles-01",
+    "name": "Ace of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 1,
+    "upright": [
+      "material seed",
+      "tangible opportunity",
+      "grounded start",
+      "practical gift"
+    ]
+  },
+  {
+    "id": "pentacles-02",
+    "name": "Two of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 2,
+    "upright": [
+      "juggling priorities",
+      "adaptable balance",
+      "flexible budgeting",
+      "steady rhythm"
+    ]
+  },
+  {
+    "id": "pentacles-03",
+    "name": "Three of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 3,
+    "upright": [
+      "skilled teamwork",
+      "craftsmanship",
+      "collaborative building",
+      "recognized competence"
+    ]
+  },
+  {
+    "id": "pentacles-04",
+    "name": "Four of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 4,
+    "upright": [
+      "careful saving",
+      "firm hold",
+      "security-seeking",
+      "protective boundaries"
+    ]
+  },
+  {
+    "id": "pentacles-05",
+    "name": "Five of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 5,
+    "upright": [
+      "hardship",
+      "feeling shut out",
+      "lean times",
+      "overlooked help"
+    ]
+  },
+  {
+    "id": "pentacles-06",
+    "name": "Six of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 6,
+    "upright": [
+      "fair giving",
+      "shared resources",
+      "balanced generosity",
+      "kindness with means"
+    ]
+  },
+  {
+    "id": "pentacles-07",
+    "name": "Seven of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 7,
+    "upright": [
+      "patient growth",
+      "assessing the harvest",
+      "long-view investment",
+      "pausing to evaluate"
+    ]
+  },
+  {
+    "id": "pentacles-08",
+    "name": "Eight of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 8,
+    "upright": [
+      "dedicated practice",
+      "diligent craft",
+      "steady improvement",
+      "apprenticeship"
+    ]
+  },
+  {
+    "id": "pentacles-09",
+    "name": "Nine of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 9,
+    "upright": [
+      "self-made comfort",
+      "refined independence",
+      "earned leisure",
+      "graceful abundance"
+    ]
+  },
+  {
+    "id": "pentacles-10",
+    "name": "Ten of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 10,
+    "upright": [
+      "lasting legacy",
+      "family wealth",
+      "long-term security",
+      "inherited stability"
+    ]
+  },
+  {
+    "id": "pentacles-11-page",
+    "name": "Page of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 11,
+    "upright": [
+      "diligent student",
+      "practical curiosity",
+      "new study",
+      "grounded ambition"
+    ]
+  },
+  {
+    "id": "pentacles-12-knight",
+    "name": "Knight of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 12,
+    "upright": [
+      "methodical progress",
+      "reliable effort",
+      "steady plodding",
+      "dependable duty"
+    ]
+  },
+  {
+    "id": "pentacles-13-queen",
+    "name": "Queen of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 13,
+    "upright": [
+      "practical nurture",
+      "resourceful homemaking",
+      "earthy generosity",
+      "steady comfort"
+    ]
+  },
+  {
+    "id": "pentacles-14-king",
+    "name": "King of Pentacles",
+    "arcana": "minor",
+    "suit": "pentacles",
+    "number": 14,
+    "upright": [
+      "enterprising stability",
+      "prosperous steward",
+      "reliable provider",
+      "patient mastery"
+    ]
+  },
+  {
+    "id": "back",
+    "name": "Card Back",
+    "arcana": null,
+    "suit": null,
+    "number": null,
+    "upright": [
+      "celestial vault",
+      "seven-pointed star",
+      "gold geometry",
+      "quiet night field"
+    ]
+  }
+]
