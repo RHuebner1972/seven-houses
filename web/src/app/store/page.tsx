@@ -44,11 +44,14 @@ export default function StorePage() {
 
   const onBuy = (pkg: Package) => {
     if (!me.data || busy) return;
+    // Cached state is a fast path; `buy` re-checks against a fresh /me before charging.
     if (me.data.anon) {
       setAskSignIn(true);
       return;
     }
-    void buy(pkg, me.data.balance);
+    void buy(pkg).then((outcome) => {
+      if (outcome === "needs_sign_in") setAskSignIn(true);
+    });
   };
 
   return (
@@ -96,7 +99,7 @@ export default function StorePage() {
               <p className="mt-4 text-3xl text-gold-hi">{pkg.priceString}</p>
               <button
                 type="button"
-                aria-label={`Buy ${pkg.title}`}
+                aria-label={`Buy ${pkg.title}: ${pkg.credits} credits for ${pkg.priceString}`}
                 disabled={busy || !me.data}
                 onClick={() => onBuy(pkg)}
                 className={`${button} mt-5`}

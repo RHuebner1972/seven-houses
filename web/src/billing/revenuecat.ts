@@ -1,4 +1,10 @@
-import { creditsFromProductId, PurchaseCancelledError, type BillingProvider, type Package } from "./provider";
+import {
+  creditsFromProductId,
+  PurchaseCancelledError,
+  PurchasePendingError,
+  type BillingProvider,
+  type Package,
+} from "./provider";
 
 type Sdk = typeof import("@revenuecat/purchases-js");
 type RcPackage = import("@revenuecat/purchases-js").Package;
@@ -64,8 +70,9 @@ export function createRevenueCatBilling(apiKey: string): BillingProvider {
         const result = await instance().purchase({ rcPackage });
         return { transactionId: result.storeTransaction.storeTransactionId };
       } catch (e) {
-        if (e instanceof PurchasesError && e.errorCode === ErrorCode.UserCancelledError) {
-          throw new PurchaseCancelledError();
+        if (e instanceof PurchasesError) {
+          if (e.errorCode === ErrorCode.UserCancelledError) throw new PurchaseCancelledError();
+          if (e.errorCode === ErrorCode.PaymentPendingError) throw new PurchasePendingError();
         }
         throw e;
       }

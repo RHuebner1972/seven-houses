@@ -6,11 +6,21 @@ import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Providers as RealProviders } from "@/components/providers";
 import StorePage from "@/app/store/page";
-import { PURCHASE_POLL_INTERVAL_MS, PURCHASE_POLL_MAX_MS } from "@/hooks/use-purchase";
+import {
+  PURCHASE_FAILED_COPY,
+  PURCHASE_POLL_INTERVAL_MS,
+  PURCHASE_POLL_MAX_MS,
+} from "@/hooks/use-purchase";
 import { apiBase } from "@/lib/api";
 import { createMockBilling, MOCK_PACKAGES } from "@/billing/mock";
 import { selectBillingProvider } from "@/billing";
-import { creditsFromProductId, PurchaseCancelledError, type BillingProvider, type Package } from "@/billing/provider";
+import {
+  creditsFromProductId,
+  PurchaseCancelledError,
+  PurchasePendingError,
+  type BillingProvider,
+  type Package,
+} from "@/billing/provider";
 import type { Me } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({
@@ -88,7 +98,11 @@ test("packages render titles, credits and prices from the provider", async () =>
     expect(within(cards[i]).getByText(pkg.title)).toBeInTheDocument();
     expect(within(cards[i]).getByText(pkg.priceString)).toBeInTheDocument();
     expect(within(cards[i]).getByText(`${pkg.credits} credits`)).toBeInTheDocument();
-    expect(within(cards[i]).getByRole("button", { name: `Buy ${pkg.title}` })).toBeEnabled();
+    expect(
+      within(cards[i]).getByRole("button", {
+        name: `Buy ${pkg.title}: ${pkg.credits} credits for ${pkg.priceString}`,
+      }),
+    ).toBeEnabled();
   }
 });
 
@@ -127,8 +141,10 @@ test("anonymous user is asked to sign in before buying", async () => {
 
 test("purchase then polls /me until balance rises", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  // initial load, then two polls at 0, then the webhook has landed
-  server.use(meHandler([me({ balance: 0 }), me({ balance: 0 }), me({ balance: 0 }), me({ balance: 5 })]));
+  // initial load, fresh baseline, two polls at 0, then the webhook has landed
+  server.use(
+    meHandler([me({ balance: 0 }), me({ balance: 0 }), me({ balance: 0 }), me({ balance: 0 }), me({ balance: 5 })]),
+  );
   const purchase = vi.spyOn(billing, "purchase");
   renderStore();
   const buy = await firstBuy();
@@ -139,15 +155,15 @@ test("purchase then polls /me until balance rises", async () => {
   expect(purchase.mock.calls[0][0].productId).toBe(MOCK_PACKAGES[0].productId);
   await screen.findByText(/Processing/);
   for (const b of buyButtons()) expect(b).toBeDisabled();
-  // first check right away — the webhook may already have landed
-  await waitFor(() => expect(meCalls).toBe(2));
-
-  await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS + 50));
+  // fresh baseline before checkout, then a first check right away
   await waitFor(() => expect(meCalls).toBe(3));
-  expect(screen.getByText(/Processing/)).toBeInTheDocument();
 
   await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS + 50));
   await waitFor(() => expect(meCalls).toBe(4));
+  expect(screen.getByText(/Processing/)).toBeInTheDocument();
+
+  await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS + 50));
+  await waitFor(() => expect(meCalls).toBe(5));
   const status = await screen.findByRole("status", { name: "Purchase status" });
   expect(status).toHaveTextContent(/credits are in/i);
   expect(status).toHaveTextContent("5");
@@ -189,10 +205,10 @@ test("polling stops when the page unmounts", async () => {
   const buy = await firstBuy();
   fireEvent.click(buy);
   await screen.findByText(/Processing/);
-  await waitFor(() => expect(meCalls).toBe(2));
+  await waitFor(() => expect(meCalls).toBe(3));
   unmount();
   await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS * 3));
-  expect(meCalls).toBe(2);
+  expect(meCalls).toBe(3);
 });
 
 test("a cancelled purchase re-enables Buy quietly; an SDK failure shows an inline message", async () => {
@@ -213,9 +229,78 @@ test("a cancelled purchase re-enables Buy quietly; an SDK failure shows an inlin
   fireEvent.click(buy);
   await waitFor(() => expect(purchase).toHaveBeenCalledTimes(2));
   const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent(/couldn.t complete/i);
+  expect(alert).toHaveTextContent(PURCHASE_FAILED_COPY);
   expect(buy).toBeEnabled();
-  expect(meCalls).toBe(1);
+  // one load plus a fresh baseline per attempt; no polling after a failed checkout
+  expect(meCalls).toBe(3);
+});
+
+test("a payment the SDK reports as pending enters the processing path, not an error", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // load, baseline, first poll still 0, then credited
+  server.use(meHandler([me({ balance: 0 }), me({ balance: 0 }), me({ balance: 0 }), me({ balance: 5 })]));
+  vi.spyOn(billing, "purchase").mockRejectedValueOnce(new PurchasePendingError());
+  renderStore();
+  fireEvent.click(await firstBuy());
+  await screen.findByText(/Processing/);
+  expect(screen.queryByRole("alert")).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS + 50));
+  const status = await screen.findByRole("status", { name: "Purchase status" });
+  expect(status).toHaveTextContent(/credits are in/i);
+  expect(status).toHaveTextContent("5");
+});
+
+test("the balance baseline comes from a fresh GET /me, not the cache", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // cached 0 at load; an earlier purchase's credits (5) landed unseen before this buy.
+  // Polls: 5 (no change yet) → 10 (this purchase).
+  server.use(meHandler([me({ balance: 0 }), me({ balance: 5 }), me({ balance: 5 }), me({ balance: 10 })]));
+  renderStore();
+  fireEvent.click(await firstBuy());
+  await screen.findByText(/Processing/);
+  await waitFor(() => expect(meCalls).toBe(3));
+  // the first poll returned 5 — above the stale cache, but not above the fresh baseline
+  expect(screen.getByText(/Processing/)).toBeInTheDocument();
+  expect(screen.queryByText(/credits are in/i)).toBeNull();
+
+  await act(() => vi.advanceTimersByTimeAsync(PURCHASE_POLL_INTERVAL_MS + 50));
+  const status = await screen.findByRole("status", { name: "Purchase status" });
+  expect(status).toHaveTextContent(/credits are in/i);
+  expect(status).toHaveTextContent("10");
+  expect(qc.getQueryData<Me>(["me"])?.balance).toBe(10);
+});
+
+test("a user whose fresh /me is anonymous gets the sign-in sheet instead of a charge", async () => {
+  // cached /me says signed in; the account was deleted/signed out elsewhere before Buy
+  server.use(meHandler([me({ anon: false }), me({ anon: true })]));
+  const purchase = vi.spyOn(billing, "purchase");
+  renderStore();
+  fireEvent.click(await firstBuy());
+  await screen.findByRole("dialog", { name: "Sign in to buy credits" });
+  expect(purchase).not.toHaveBeenCalled();
+  expect(screen.queryByText(/Processing/)).toBeNull();
+});
+
+test("a double click starts one purchase", async () => {
+  server.use(meHandler([me({ balance: 0 })]));
+  let release: () => void = () => {};
+  const purchase = vi.spyOn(billing, "purchase").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ transactionId: "mock-1" });
+      }),
+  );
+  renderStore();
+  const buy = await firstBuy();
+  fireEvent.click(buy);
+  fireEvent.click(buy);
+  fireEvent.click(buy);
+  await waitFor(() => expect(purchase).toHaveBeenCalledTimes(1));
+  // baseline fetch has resolved; still only one checkout
+  await waitFor(() => expect(meCalls).toBe(2));
+  expect(purchase).toHaveBeenCalledTimes(1);
+  release();
+  await screen.findByText(/Processing/);
 });
 
 test("packages that fail to load offer a retry", async () => {
@@ -245,8 +330,11 @@ test("selectBillingProvider honours NEXT_PUBLIC_BILLING and falls back on the RC
   expect(selectBillingProvider({ NEXT_PUBLIC_BILLING: "revenuecat", NEXT_PUBLIC_RC_WEB_KEY: "rcb_x" }).kind).toBe(
     "revenuecat",
   );
-  // asking for RevenueCat without a key cannot work; fall back rather than crash at import time
+  // asking for RevenueCat without a key cannot work; fall back (loudly) rather than crash at import time
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
   expect(selectBillingProvider({ NEXT_PUBLIC_BILLING: "revenuecat" }).kind).toBe("mock");
+  expect(err).toHaveBeenCalledTimes(1);
+  expect(err.mock.calls[0][0]).toMatch(/NEXT_PUBLIC_RC_WEB_KEY/);
   expect(selectBillingProvider({ NEXT_PUBLIC_BILLING: "bogus", NEXT_PUBLIC_RC_WEB_KEY: "rcb_x" }).kind).toBe(
     "revenuecat",
   );

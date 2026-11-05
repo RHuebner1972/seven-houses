@@ -36,6 +36,21 @@ export function isPurchaseCancelled(e: unknown): boolean {
   return e instanceof PurchaseCancelledError;
 }
 
+/**
+ * The payment was accepted but is still settling (e.g. bank transfer, 3DS follow-up).
+ * Treat as a successful purchase whose webhook has not landed yet.
+ */
+export class PurchasePendingError extends Error {
+  constructor() {
+    super("payment pending");
+    this.name = "PurchasePendingError";
+  }
+}
+
+export function isPurchasePending(e: unknown): boolean {
+  return e instanceof PurchasePendingError;
+}
+
 const CREDITS_RE = /_credits_(\d+)$/;
 
 /** `sh_credits_5` → 5. Null for any other shape (callers skip such packages). */

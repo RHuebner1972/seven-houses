@@ -19,6 +19,9 @@ export function selectBillingProvider(env: BillingEnv): { kind: BillingKind; pro
   const wanted = env.NEXT_PUBLIC_BILLING?.trim().toLowerCase();
   const kind: BillingKind = wanted === "mock" ? "mock" : key ? "revenuecat" : "mock";
   if (kind === "revenuecat" && key) return { kind, provider: createRevenueCatBilling(key) };
+  if (wanted === "revenuecat") {
+    console.error("NEXT_PUBLIC_BILLING=revenuecat but NEXT_PUBLIC_RC_WEB_KEY is unset; using mock billing");
+  }
   return { kind: "mock", provider: createMockBilling() };
 }
 
